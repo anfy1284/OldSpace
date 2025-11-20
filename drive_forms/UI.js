@@ -245,9 +245,10 @@ formTetris.currentFigureAdresses = null;
 formTetris.contentArea = null;
 
 formTetris.checkCollision = function(cellX, cellY) {
-	if (cellX < 0 || cellX >= this.gridWidth || cellY < 0 || cellY >= this.gridHeigh || this.grid[cellY][cellX].value !== 0) {
+	if (cellX < 0 || cellX >= this.gridWidth || cellY < 0 || cellY >= this.gridHeight || this.grid[cellY][cellX].value !== 0) {
 		return true;
 	}
+	return false;
 }
 
 formTetris.setNewFigure = function(newFigure) {
@@ -262,7 +263,7 @@ formTetris.setNewFigure = function(newFigure) {
 		}
 		this.currentFigureAdresses.push({x: cellX, y: cellY});
 	}
-	return false;
+	return true;
 }
 
 formTetris.showFigure = function(isNew = false) {
@@ -294,20 +295,35 @@ formTetris.showFigure = function(isNew = false) {
 
 formTetris.reDraw = function() {
 	// Вычисляем размеры ячеек
-	const cellWidth = this.contentArea.clientHeight / this.gridHeight;
+	//this.initializeGrid();
 }
 
 formTetris.initializeGrid = function() {
-	this.grid = [];
-	let top = this.playArea.top;
-	let left = this.playArea.left;
+	this.cellSize = this.contentArea.clientHeight / this.gridHeight;
+
+	if (this.grid){
+		for (let y = 0; y < this.grid.length; y++) {
+			for (let x = 0; x < this.grid[y].length; x++) {
+				if(this.grid[y][x].element)
+					this.grid[y][x].element.remove();
+			}
+		}
+	}
+
+	if (this.grid.length !== this.gridHeight || this.grid[0].length !== this.gridWidth) {
+		this.grid = [];
+	}
+	
+	let top = 0;
+	let left = 0;
 	for (let y = 0; y < this.gridHeight; y++) {
 		const row = [];
 		for (let x = 0; x < this.gridWidth; x++) {
-			row.push({value: 0, left: left, top: top});
+			row.push({value: 0, left: left, top: top, element: null});
 			left += this.cellSize;
 		}
 		this.grid.push(row);
+		left = 0;
 		top += this.cellSize;
 	}
 }
@@ -317,8 +333,8 @@ formTetris.onDraw = function(parent) {
 	// Вызываем базовую реализацию
 	Form.prototype.onDraw.call(this, parent);
 
-	const contentArea = this.getContentArea();
-	if (!contentArea) return;
+	this.contentArea = this.getContentArea();
+	if (!this.contentArea) return;
 	// Создаем игровое поле
 	this.playArea = document.createElement('div');
 	this.contentArea.appendChild(this.playArea);
@@ -355,9 +371,12 @@ formTetris.onDraw = function(parent) {
 			}, this.speedInterval);
 		}
 	};
-
-	this.reDraw();
-	this.initializeGrid();
+	
+	// Ждем завершения layout (стандартная практика для сложных UI)
+	setTimeout(() => {
+		this.reDraw();
+	}, 50);
+	
 }
 
 formTetris.figures = [
@@ -441,6 +460,106 @@ formTetris.startNewLevel = function(level){
 
 formTetris.setGameOver = function() {
 	this.isGameOver = true;
+		if (this.gameInterval) {
+			clearInterval(this.gameInterval);
+			this.gameInterval = null;
+		}
+		alert('Game Over! Score: ' + this.score);
+}
+
+formTetris.goNextFigure = function() {
+	// Фиксируем текущую фигуру в сетке
+	for (let i = 0; i < this.currentFigureAdresses.length; i++) {
+		const cellX = this.currentFigureAdresses[i].x;
+		const cellY = this.currentFigureAdresses[i].y;
+		this.grid[cellY][cellX].value = 1;
+		this.grid[cellY][cellX].element = this.currentFigureElements[i];
+	}
+	
+	// Проверяем заполненные линии и удаляем их
+	this.checkAndRemoveLines();
+	
+	// Переключаемся на следующую фигуру
+	this.currentFigure = this.nextFigure;
+	this.nextFigure = this.getRandomFigure();
+	this.currentFigurePosition = this.getFigureStartPosition(this.currentFigure);
+	this.currentFigureRotation = 0;
+	
+	// Проверяем, можем ли разместить новую фигуру
+	if (!this.setNewFigure(this.currentFigure)) {
+		this.setGameOver();
+		return;
+	}
+	
+	// Отображаем новую фигуру
+	this.showFigure(true);
+}
+
+formTetris.checkAndRemoveLines = function() {
+	// Находим все заполненные линии
+	const fullLines = [];
+	for (let y = 0; y < this.gridHeight; y++) {
+		let isFull = true;
+		for (let x = 0; x < this.gridWidth; x++) {
+			if (this.grid[y][x].value === 0) {
+				isFull = false;
+				break;
+			}
+		}
+		if (isFull) {
+			fullLines.push(y);
+		}
+	}
+	
+	const linesRemoved = fullLines.length;
+	if (linesRemoved === 0) return;
+	
+	// Удаляем визуальные элементы заполненных линий
+	for (let y of fullLines) {
+		for (let x = 0; x < this.gridWidth; x++) {
+			const elem = this.grid[y][x].element;
+			if (elem) {
+				elem.remove();
+			}
+			this.grid[y][x].value = 0;
+			this.grid[y][x].element = null;
+		}
+	}
+	
+	// Создаем новую сетку, пропуская удаленные линии
+	const newGrid = [];
+	for (let y = 0; y < this.gridHeight; y++) {
+		if (!fullLines.includes(y)) {
+			newGrid.push(this.grid[y]);
+		}
+	}
+	
+	// Добавляем пустые линии сверху
+	for (let i = 0; i < linesRemoved; i++) {
+		const emptyRow = [];
+		for (let x = 0; x < this.gridWidth; x++) {
+			emptyRow.push({value: 0, left: this.grid[0][x].left, top: this.grid[0][x].top, element: null});
+		}
+		newGrid.unshift(emptyRow);
+	}
+	
+	// Обновляем координаты и визуальные элементы
+	for (let y = 0; y < this.gridHeight; y++) {
+		for (let x = 0; x < this.gridWidth; x++) {
+			const oldCell = newGrid[y][x];
+			const newTop = this.grid[y][x].top;
+			const newLeft = this.grid[y][x].left;
+			
+			this.grid[y][x].value = oldCell.value;
+			this.grid[y][x].element = oldCell.element;
+			
+			if (this.grid[y][x].element) {
+				this.grid[y][x].element.style.top = newTop + 'px';
+				this.grid[y][x].element.style.left = newLeft + 'px';
+			}
+		}
+	}
+	
 }
 
 formTetris.moveFigureDown = function() {
@@ -454,7 +573,7 @@ formTetris.moveFigureDown = function() {
 		newAddresses.push(newAdress);
 	});
 	if (isCollision){
-		this.nextFigure();
+		this.goNextFigure();
 	} else {
 		this.currentFigureAdresses = newAddresses;
 		this.showFigure(false);
@@ -467,6 +586,11 @@ formTetris.gameStep = function() {
 
 formTetris.newGame = function() {
 	this.initializeGrid();
+	if (this.currentFigureElements){
+		for (let element of this.currentFigureElements){
+			element.remove();
+		}
+	}
 	this.currentFigure = this.getRandomFigure();
 	this.nextFigure = this.getRandomFigure();
 	this.currentFigurePosition = this.getFigureStartPosition(this.currentFigure);
