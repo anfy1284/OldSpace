@@ -242,6 +242,7 @@ formTetris.isGameOver = false;
 formTetris.nextFigure = null;
 formTetris.currentFigureElements = null;
 formTetris.currentFigureAdresses = null;
+formTetris.contentArea = null;
 
 formTetris.checkCollision = function(cellX, cellY) {
 	if (cellX < 0 || cellX >= this.gridWidth || cellY < 0 || cellY >= this.gridHeigh || this.grid[cellY][cellX].value !== 0) {
@@ -269,9 +270,9 @@ formTetris.showFigure = function(isNew = false) {
 	if (isNew) {
 		this.currentFigureElements = [];
 	}
-	for (let i = 0; i < currentFigureAdresses.length; i++) {
-		const cellX = currentFigureAdresses[i].x;
-		const cellY = currentFigureAdresses[i].y;
+	for (let i = 0; i < this.currentFigureAdresses.length; i++) {
+		const cellX = this.currentFigureAdresses[i].x;
+		const cellY = this.currentFigureAdresses[i].y;
 		const cell = this.grid[cellY][cellX];
 		if (isNew) {
 			const cellDiv = document.createElement('div');
@@ -293,13 +294,13 @@ formTetris.showFigure = function(isNew = false) {
 
 formTetris.reDraw = function() {
 	// Вычисляем размеры ячеек
-	const cellWidth = contentArea.clientHeight / this.gridHeight;
+	const cellWidth = this.contentArea.clientHeight / this.gridHeight;
 }
 
 formTetris.initializeGrid = function() {
 	this.grid = [];
-	let top = playArea.top;
-	let left = playArea.left;
+	let top = this.playArea.top;
+	let left = this.playArea.left;
 	for (let y = 0; y < this.gridHeight; y++) {
 		const row = [];
 		for (let x = 0; x < this.gridWidth; x++) {
@@ -309,8 +310,6 @@ formTetris.initializeGrid = function() {
 		this.grid.push(row);
 		top += this.cellSize;
 	}
-	// Очищаем текущее содержимое
-	contentArea.innerHTML = '';
 }
 
 formTetris.onDraw = function(parent) {
@@ -322,7 +321,7 @@ formTetris.onDraw = function(parent) {
 	if (!contentArea) return;
 	// Создаем игровое поле
 	this.playArea = document.createElement('div');
-	contentArea.appendChild(this.playArea);
+	this.contentArea.appendChild(this.playArea);
 	this.playArea.style.position = 'relative';
 	this.playArea.style.margin = '0 auto';
 	this.playArea.style.backgroundColor = '#f0f0f0';
@@ -330,7 +329,7 @@ formTetris.onDraw = function(parent) {
 
 	//Создаем кнопки управления
 	const controlsDiv = document.createElement('div');
-	contentArea.appendChild(controlsDiv);
+	this.contentArea.appendChild(controlsDiv);
 	controlsDiv.style.textAlign = 'center';
 	controlsDiv.style.marginTop = '10px';
 	
@@ -426,16 +425,17 @@ formTetris.startNewLevel = function(level){
 	if (this.gameInterval){
 		clearInterval(this.gameInterval);
 	}
-	// Запуск игрового цикла
-	this.gameInterval = setInterval(() => {
-		this.gameStep();
-	}, this.speedInterval);
 
 	if (this.setNewFigure(this.currentFigure)){
 		this.showFigure(true);
+		// Запуск игрового цикла
+		this.gameInterval = setInterval(() => {
+			this.gameStep();
+		}, this.speedInterval);
 	}else{
 		this.setGameOver();
 	}
+
 	
 }
 
