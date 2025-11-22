@@ -1,16 +1,6 @@
 
 //TEST
 
-// Первая тестовая форма (верхний левый угол)
-const form1 = new Form();
-form1.setTitle('Тестовая форма 1');
-form1.setX(30);
-form1.setY(30);
-form1.setWidth(200);
-form1.setHeight(120);
-form1.setZ(1);
-form1.onDraw(document.body);
-
 // Вторая тестовая форма (правый нижний угол)
 const form2 = new Form();
 form2.setTitle('Окно настроек');
@@ -18,7 +8,6 @@ form2.setX(700);
 form2.setY(700);
 form2.setWidth(260);
 form2.setHeight(160);
-form2.setZ(2);
 form2.movable = false;
 form2.setAnchorToWindow('bottom-right');
 form2.onDraw(document.body);
@@ -31,7 +20,6 @@ formCalc.setX(300);
 formCalc.setY(300);
 formCalc.setWidth(500);
 formCalc.setHeight(300);
-formCalc.setZ(3);
 formCalc.setAnchorToWindow('center');
 formCalc.displayMemory = '0';
 formCalc.dotPressed = false;
@@ -218,16 +206,17 @@ formCalc.onDraw(document.body);
 const formTetris = new Form();
 formTetris.setTitle('Tetris');
 formTetris.setX(600);
-formTetris.setY(600);
-formTetris.setWidth(500);
-formTetris.setHeight(300);
-formTetris.setZ(4);
+formTetris.setY(200);
+formTetris.setWidth(470);
+formTetris.setHeight(600);
 formTetris.setAnchorToWindow('center');
+formTetris.setLockAspectRatio(true);
 
 // Свойства и методы, специфичные для игры Тетрис
 formTetris.gridWidth = 10;
 formTetris.gridHeight = 20;
 formTetris.grid = [];
+formTetris.linesPerLevel = 10;
 formTetris.playArea = null;
 formTetris.cellSize = 0;
 formTetris.currentFigure = null;
@@ -243,6 +232,104 @@ formTetris.nextFigure = null;
 formTetris.currentFigureElements = null;
 formTetris.currentFigureAdresses = null;
 formTetris.contentArea = null;
+formTetris.nextFigureArea = null;
+formTetris.nextFigureSize = 0;
+formTetris.scoreTextBox = null;
+formTetris.levelTextBox = null;
+formTetris.startButton = null;
+formTetris.pauseButton = null;
+formTetris.colorIndex = 0;
+formTetris.levelColor = null;
+formTetris.keysPressed = {};
+formTetris.moveInterval = null;
+formTetris.moveDelay = 100;
+formTetris.gameOverPanel = null;
+formTetris.gameOverTitle = null;
+formTetris.gameOverScore = null;
+formTetris.dropHoldCount = 0; // Счетчик удержания клавиши вниз
+
+// Генератор цветов
+formTetris.colors = ['#00FFFF', '#0000FF', '#FFA500', '#FFFF00', '#00FF00', '#800080', '#FF0000'];
+
+formTetris.getNextColor = function() {
+	const color = this.colors[this.colorIndex];
+	this.colorIndex = (this.colorIndex + 1) % this.colors.length;
+	return color;
+}
+
+formTetris.onKeyPressed = function(keyEvent) {
+	if (this.isGameOver) return;
+	
+	const key = keyEvent.key;
+	if (['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp'].includes(key)) {
+		keyEvent.preventDefault();
+		
+		// Отмечаем клавишу как нажатую
+		if (!this.keysPressed[key]) {
+			this.keysPressed[key] = true;
+			this.processKeyActions();
+			
+			// Запускаем интервал для непрерывного движения
+			if (!this.moveInterval) {
+				this.moveInterval = setInterval(() => {
+					this.processKeyActions();
+				}, this.moveDelay);
+			}
+		}
+	}
+}
+
+formTetris.onKeyReleased = function(keyEvent) {
+	const key = keyEvent.key;
+	if (['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp'].includes(key)) {
+		this.keysPressed[key] = false;
+		if (key === 'ArrowDown') {
+			this.dropHoldCount = 0; // Сбрасываем счетчик удержания вниз
+		}
+		
+		// Останавливаем интервал если все клавиши движения отпущены
+		if (!this.keysPressed['ArrowLeft'] && !this.keysPressed['ArrowRight'] && !this.keysPressed['ArrowDown']) {
+			if (this.moveInterval) {
+				clearInterval(this.moveInterval);
+				this.moveInterval = null;
+			}
+		}
+	}
+}
+
+formTetris.processKeyActions = function() {
+	if (this.isGameOver) return;
+	
+	// Обрабатываем вращение
+	if (this.keysPressed['ArrowUp']) {
+		this.rotateFigure();
+		this.keysPressed['ArrowUp'] = false; // Вращение однократное при нажатии
+	}
+	
+	// Обрабатываем движение влево
+	if (this.keysPressed['ArrowLeft']) {
+		this.moveFigureLeft();
+	}
+	
+	// Обрабатываем движение вправо
+	if (this.keysPressed['ArrowRight']) {
+		this.moveFigureRight();
+	}
+	
+	// Обрабатываем движение вниз
+	if (this.keysPressed['ArrowDown']) {
+		// Первые два шага обычные
+		if (this.dropHoldCount < 3) {
+			this.moveFigureDown();
+			this.dropHoldCount++;
+		} else {
+			// Быстрый (жесткий) дроп: многократно вызываем moveFigureDown
+			// Пока фигура успешно опускается, продолжаем. Когда вернулось false (зафиксирована) — выходим.
+			while (this.moveFigureDown()) {}
+			this.dropHoldCount = 0;
+		}
+	}
+}
 
 formTetris.checkCollision = function(cellX, cellY) {
 	if (cellX < 0 || cellX >= this.gridWidth || cellY < 0 || cellY >= this.gridHeight || this.grid[cellY][cellX].value !== 0) {
@@ -278,15 +365,26 @@ formTetris.showFigure = function(isNew = false) {
 		if (isNew) {
 			const cellDiv = document.createElement('div');
 			cellDiv.style.position = 'absolute';
+			cellDiv.style.boxSizing = 'border-box';
 			cellDiv.style.width = this.cellSize + 'px';
 			cellDiv.style.height = this.cellSize + 'px';
 			cellDiv.style.left = cell.left + 'px';
 			cellDiv.style.top = cell.top + 'px';
-			cellDiv.style.backgroundColor = this.currentFigure.color;
+		// Объемные границы в стиле Windows 95
+		const baseColor = this.currentFigure.color;
+		const lightColor = UIObject.brightenColor(baseColor, 60);
+		const darkColor = UIObject.brightenColor(baseColor, -60);
+		cellDiv.style.backgroundColor = baseColor;
+			cellDiv.style.borderTop = `3px solid ${lightColor}`;
+			cellDiv.style.borderLeft = `3px solid ${lightColor}`;
+			cellDiv.style.borderRight = `3px solid ${darkColor}`;
+			cellDiv.style.borderBottom = `3px solid ${darkColor}`;
 			this.playArea.appendChild(cellDiv);
 			this.currentFigureElements.push(cellDiv);
 		} else {
 			const cellDiv = this.currentFigureElements[i];
+			cellDiv.style.width = this.cellSize + 'px';
+			cellDiv.style.height = this.cellSize + 'px';
 			cellDiv.style.left = cell.left + 'px';
 			cellDiv.style.top = cell.top + 'px';
 		}
@@ -295,37 +393,130 @@ formTetris.showFigure = function(isNew = false) {
 
 formTetris.reDraw = function() {
 	// Вычисляем размеры ячеек
-	//this.initializeGrid();
+	this.cellSize = Math.round(Math.floor((this.contentArea.clientHeight - 15) / (this.gridHeight)));
+
+	// Устанавливаем размеры игрового поля
+	this.playArea.style.width = (this.cellSize * this.gridWidth) + 'px';
+	this.playArea.style.height = (this.cellSize * this.gridHeight) + 'px';
+	
+	// Пересчитываем размеры UI элементов пропорционально
+	const uiScale = this.cellSize / 20; // базовый размер клетки 20px
+	const nextFigureSize = this.cellSize * 6; // 6 ячеек для области превью
+	const textBoxHeight = Math.floor(30 * uiScale);
+	const buttonHeight = Math.floor(30 * uiScale);
+	
+	if (this.nextFigureArea) {
+		this.nextFigureArea.style.width = nextFigureSize + 'px';
+		this.nextFigureArea.style.height = nextFigureSize + 'px';
+		this.nextFigureSize = this.cellSize; // Используем тот же размер что и в основном поле
+		this.showNextFigure();
+	}
+	
+	if (this.scoreTextBox && this.scoreTextBox.getElement()) {
+		const scoreElement = this.scoreTextBox.getElement();
+		scoreElement.style.width = nextFigureSize + 'px';
+		scoreElement.style.height = textBoxHeight + 'px';
+		scoreElement.style.fontSize = Math.floor(14 * uiScale) + 'px';
+	}
+	
+	if (this.levelTextBox && this.levelTextBox.getElement()) {
+		const levelElement = this.levelTextBox.getElement();
+		levelElement.style.width = nextFigureSize + 'px';
+		levelElement.style.height = textBoxHeight + 'px';
+		levelElement.style.fontSize = Math.floor(14 * uiScale) + 'px';
+	}
+	
+	if (this.startButton && this.startButton.getElement()) {
+		const startBtnElement = this.startButton.getElement();
+		startBtnElement.style.width = nextFigureSize + 'px';
+		startBtnElement.style.height = buttonHeight + 'px';
+		startBtnElement.style.fontSize = Math.floor(14 * uiScale) + 'px';
+	}
+	
+	if (this.pauseButton && this.pauseButton.getElement()) {
+		const pauseBtnElement = this.pauseButton.getElement();
+		pauseBtnElement.style.width = nextFigureSize + 'px';
+		pauseBtnElement.style.height = buttonHeight + 'px';
+		pauseBtnElement.style.fontSize = Math.floor(14 * uiScale) + 'px';
+	}
+	
+	// Пересчитываем координаты и обновляем позиции элементов
+	if (this.grid && this.grid.length > 0) {
+		let top = 0;
+		let left = 0;
+		for (let y = 0; y < this.gridHeight; y++) {
+			for (let x = 0; x < this.gridWidth; x++) {
+				this.grid[y][x].left = Math.round(left);
+				this.grid[y][x].top = Math.round(top);
+				
+				// Обновляем размер и позицию элемента если он есть
+				if (this.grid[y][x].element) {
+					this.grid[y][x].element.style.width = this.cellSize + 'px';
+					this.grid[y][x].element.style.height = this.cellSize + 'px';
+					this.grid[y][x].element.style.left = Math.round(left) + 'px';
+					this.grid[y][x].element.style.top = Math.round(top) + 'px';
+				}
+				left += this.cellSize;
+			}
+			left = 0;
+			top += this.cellSize;
+		}
+		
+		// Обновляем текущую фигуру если она есть
+		if (this.currentFigureElements) {
+			this.showFigure(false);
+		}
+	}
+	
+	// Обновляем размеры панели Game Over
+	if (this.gameOverPanel) {
+		const panelScale = uiScale;
+		this.gameOverPanel.style.padding = Math.floor(20 * panelScale) + 'px ' + Math.floor(35 * panelScale) + 'px';
+		
+		if (this.gameOverTitle) {
+			this.gameOverTitle.style.fontSize = Math.floor(32 * panelScale) + 'px';
+			this.gameOverTitle.style.marginBottom = Math.floor(12 * panelScale) + 'px';
+		}
+		
+		if (this.gameOverScore) {
+			this.gameOverScore.style.fontSize = Math.floor(18 * panelScale) + 'px';
+		}
+	}
+}
+
+formTetris.onResizing = function() {
+	// При изменении размера перерисовываем игровое поле
+	this.reDraw();
 }
 
 formTetris.initializeGrid = function() {
-	this.cellSize = this.contentArea.clientHeight / this.gridHeight;
 
 	if (this.grid){
 		for (let y = 0; y < this.grid.length; y++) {
 			for (let x = 0; x < this.grid[y].length; x++) {
+				this.grid[y][x].value = 0;
 				if(this.grid[y][x].element)
 					this.grid[y][x].element.remove();
+				this.grid[y][x].element = null;
 			}
 		}
 	}
 
 	if (this.grid.length !== this.gridHeight || this.grid[0].length !== this.gridWidth) {
 		this.grid = [];
-	}
-	
-	let top = 0;
-	let left = 0;
-	for (let y = 0; y < this.gridHeight; y++) {
-		const row = [];
-		for (let x = 0; x < this.gridWidth; x++) {
-			row.push({value: 0, left: left, top: top, element: null});
-			left += this.cellSize;
+		let top = 0;
+		let left = 0;
+		for (let y = 0; y < this.gridHeight; y++) {
+			const row = [];
+			for (let x = 0; x < this.gridWidth; x++) {
+				row.push({value: 0, left: left, top: top, element: null});
+				left += this.cellSize;
+			}
+			this.grid.push(row);
+			left = 0;
+			top += this.cellSize;
 		}
-		this.grid.push(row);
-		left = 0;
-		top += this.cellSize;
-	}
+	}		
 }
 
 formTetris.onDraw = function(parent) {
@@ -335,42 +526,147 @@ formTetris.onDraw = function(parent) {
 
 	this.contentArea = this.getContentArea();
 	if (!this.contentArea) return;
+	
+	// Создаем контейнер для размещения игры и кнопок
+	const gameContainer = document.createElement('div');
+	this.contentArea.appendChild(gameContainer);
+	gameContainer.style.display = 'flex';
+	gameContainer.style.gap = '10px';
+	gameContainer.style.padding = '10px';
+	
 	// Создаем игровое поле
 	this.playArea = document.createElement('div');
-	this.contentArea.appendChild(this.playArea);
+	gameContainer.appendChild(this.playArea);
 	this.playArea.style.position = 'relative';
-	this.playArea.style.margin = '0 auto';
-	this.playArea.style.backgroundColor = '#f0f0f0';
+	this.playArea.style.backgroundColor = '#000000';
 	this.playArea.style.border = '1px solid #000';
+	this.playArea.style.flexShrink = '0';
 
+	//Создаем правую панель с превью и управлением
+	const rightPanel = document.createElement('div');
+	gameContainer.appendChild(rightPanel);
+	rightPanel.style.display = 'flex';
+	rightPanel.style.flexDirection = 'column';
+	rightPanel.style.gap = '10px';
+	
+	// Создаем поле для отображения следующей фигуры
+	this.nextFigureArea = document.createElement('div');
+	rightPanel.appendChild(this.nextFigureArea);
+	this.nextFigureArea.style.position = 'relative';
+	this.nextFigureArea.style.backgroundColor = '#000000';
+	this.nextFigureArea.style.border = '1px solid #000';
+	this.nextFigureArea.style.width = '120px';
+	this.nextFigureArea.style.height = '120px';
+	this.nextFigureSize = 25;
+	
+	// Создаем TextBox для отображения счета
+	this.scoreTextBox = new TextBox(rightPanel);
+	this.scoreTextBox.setReadOnly(true);
+	this.scoreTextBox.setText('Score: 0');
+	this.scoreTextBox.onDraw(rightPanel);
+	const scoreElement = this.scoreTextBox.getElement();
+	if (scoreElement) {
+		scoreElement.style.width = '120px';
+		scoreElement.style.height = '30px';
+		scoreElement.style.textAlign = 'center';
+	}
+	
+	// Создаем TextBox для отображения уровня
+	this.levelTextBox = new TextBox(rightPanel);
+	this.levelTextBox.setReadOnly(true);
+	this.levelTextBox.setText('Level: 1');
+	this.levelTextBox.onDraw(rightPanel);
+	const levelElement = this.levelTextBox.getElement();
+	if (levelElement) {
+		levelElement.style.width = '120px';
+		levelElement.style.height = '30px';
+		levelElement.style.textAlign = 'center';
+	}
+	
 	//Создаем кнопки управления
 	const controlsDiv = document.createElement('div');
-	this.contentArea.appendChild(controlsDiv);
-	controlsDiv.style.textAlign = 'center';
-	controlsDiv.style.marginTop = '10px';
+	rightPanel.appendChild(controlsDiv);
+	controlsDiv.style.display = 'flex';
+	controlsDiv.style.flexDirection = 'column';
+	controlsDiv.style.gap = '10px';
 	
-	const startButton = new Button(controlsDiv);
-	startButton.setCaption('New Game');
-	startButton.setParent(controlsDiv);
-	startButton.onDraw(controlsDiv);
-	startButton.onClick = () => {
+	this.startButton = new Button(controlsDiv);
+	this.startButton.setCaption('New Game');
+	this.startButton.setParent(controlsDiv);
+	this.startButton.onDraw(controlsDiv);
+	this.startButton.onClick = () => {
 		this.newGame();
 	};
+	const startBtnElement = this.startButton.getElement();
+	if (startBtnElement) {
+		startBtnElement.style.width = '120px';
+		startBtnElement.style.height = '30px';
+	}
 
-	const pauseButton = document.createElement('button');
-	pauseButton.textContent = 'Pause';
-	controlsDiv.appendChild(pauseButton);
-	pauseButton.onclick = () => {
+	this.pauseButton = new Button(controlsDiv);
+	this.pauseButton.setCaption('Pause');
+	this.pauseButton.setParent(controlsDiv);
+	this.pauseButton.onDraw(controlsDiv);
+	this.pauseButton.onClick = () => {
 		if (this.gameInterval){
 			clearInterval(this.gameInterval);
 			this.gameInterval = null;
+			this.pauseButton.setCaption('Resume');
 		} else {
 			// Запуск игрового цикла
 			this.gameInterval = setInterval(() => {
 				this.gameStep();
 			}, this.speedInterval);
+			this.pauseButton.setCaption('Pause');
 		}
 	};
+	const pauseBtnElement = this.pauseButton.getElement();
+	if (pauseBtnElement) {
+		pauseBtnElement.style.width = '120px';
+		pauseBtnElement.style.height = '30px';
+	}
+	
+	// Создаем панель Game Over
+	this.gameOverPanel = document.createElement('div');
+	this.playArea.appendChild(this.gameOverPanel);
+	
+	// Позиционирование по центру игрового поля
+	this.gameOverPanel.style.position = 'absolute';
+	this.gameOverPanel.style.left = '50%';
+	this.gameOverPanel.style.top = '50%';
+	this.gameOverPanel.style.transform = 'translate(-50%, -50%)';
+	this.gameOverPanel.style.zIndex = '1000';
+	this.gameOverPanel.style.display = 'none'; // Изначально скрыта
+	
+	// Объемные границы в стиле Windows 95 (выпуклая кнопка)
+	const baseColor = '#C0C0C0';
+	const lightColor = UIObject.brightenColor(baseColor, 80);
+	const darkColor = UIObject.brightenColor(baseColor, -80);
+	
+	this.gameOverPanel.style.backgroundColor = baseColor;
+	this.gameOverPanel.style.borderTop = `4px solid ${lightColor}`;
+	this.gameOverPanel.style.borderLeft = `4px solid ${lightColor}`;
+	this.gameOverPanel.style.borderRight = `4px solid ${darkColor}`;
+	this.gameOverPanel.style.borderBottom = `4px solid ${darkColor}`;
+	this.gameOverPanel.style.boxSizing = 'border-box';
+	
+	// Добавляем заголовок
+	this.gameOverTitle = document.createElement('div');
+	this.gameOverTitle.textContent = 'GAME OVER';
+	this.gameOverTitle.style.fontWeight = 'bold';
+	this.gameOverTitle.style.fontFamily = 'Arial, sans-serif';
+	this.gameOverTitle.style.color = '#FF0000';
+	this.gameOverTitle.style.textAlign = 'center';
+	this.gameOverTitle.style.textShadow = '2px 2px 4px rgba(0,0,0,0.5)';
+	this.gameOverPanel.appendChild(this.gameOverTitle);
+	
+	// Добавляем счет
+	this.gameOverScore = document.createElement('div');
+	this.gameOverScore.style.fontWeight = 'bold';
+	this.gameOverScore.style.fontFamily = 'Arial, sans-serif';
+	this.gameOverScore.style.color = '#000000';
+	this.gameOverScore.style.textAlign = 'center';
+	this.gameOverPanel.appendChild(this.gameOverScore);
 	
 	// Ждем завершения layout (стандартная практика для сложных UI)
 	setTimeout(() => {
@@ -379,48 +675,53 @@ formTetris.onDraw = function(parent) {
 	
 }
 
-formTetris.figures = [
-	// I
-	{shape: [
-		[[1, 1], [2, 1], [3, 1], [4, 1]], 
-		[[1, 1], [1, 2], [1, 3], [1, 4]]], 
-		color: 'cyan'},
-	// J
-	{shape: [
-		[[1, 1], [1, 2], [2, 2], [3, 2]], 
-		[[2, 1], [3, 1], [2, 2], [2, 3]], 
-		[[1, 2], [2, 2], [3, 2], [3, 3]], 
-		[[2, 1], [2, 2], [1, 3], [2, 3]]], 
-		color: 'blue'},
-	// L
-	{shape: [
-		[[3, 1], [1, 2], [2, 2], [3, 2]],
-		[[2, 1], [2, 2], [2, 3], [3, 3]],
-		[[1, 2], [2, 2], [3, 2], [1, 3]],
-		[[1, 1], [2, 1], [2, 2], [2, 3]]],
-		color: 'orange'},
-	// O
-	{shape: [
-		[[1, 1], [2, 1], [1, 2], [2, 2]]],
-		color: 'yellow'},
-	// S
-	{shape: [
-		[[2, 1], [3, 1], [1, 2], [2, 2]],
-		[[2, 1], [2, 2], [3, 2], [3, 3]]],
-		color: 'green'},
-	// T
-	{shape: [
-		[[2, 1], [1, 2], [2, 2], [3, 2]],
-		[[2, 1], [2, 2], [3, 2], [2, 3]],
-		[[1, 2], [2, 2], [3, 2], [2, 3]],
-		[[2, 1], [1, 2], [2, 2], [2, 3]]],
-		color: 'purple'},
-	// Z
-	{shape: [
-		[[1, 1], [2, 1], [2, 2], [3, 2]],
-		[[3, 1], [2, 2], [3, 2], [2, 3]]],
-		color: 'red'}	
-]
+// Инициализация фигур с цветами из генератора
+formTetris.initializeFigures = function() {
+	return [
+		// I
+		{shape: [
+			[[1, 1], [2, 1], [3, 1], [4, 1]], 
+			[[2, 1], [2, 2], [2, 3], [2, 4]]], 
+			color: this.getNextColor()},
+		// J
+		{shape: [
+			[[1, 1], [1, 2], [2, 2], [3, 2]], 
+			[[2, 1], [3, 1], [2, 2], [2, 3]], 
+			[[1, 2], [2, 2], [3, 2], [3, 3]], 
+			[[2, 1], [2, 2], [1, 3], [2, 3]]], 
+			color: this.getNextColor()},
+		// L
+		{shape: [
+			[[3, 1], [1, 2], [2, 2], [3, 2]],
+			[[2, 1], [2, 2], [2, 3], [3, 3]],
+			[[1, 2], [2, 2], [3, 2], [1, 3]],
+			[[1, 1], [2, 1], [2, 2], [2, 3]]], 
+			color: this.getNextColor()},
+		// O
+		{shape: [
+			[[1, 1], [2, 1], [1, 2], [2, 2]]], 
+			color: this.getNextColor()},
+		// S
+		{shape: [
+			[[2, 1], [3, 1], [1, 2], [2, 2]],
+			[[2, 1], [2, 2], [3, 2], [3, 3]]], 
+			color: this.getNextColor()},
+		// T
+		{shape: [
+			[[2, 1], [1, 2], [2, 2], [3, 2]],
+			[[2, 1], [2, 2], [3, 2], [2, 3]],
+			[[1, 2], [2, 2], [3, 2], [2, 3]],
+			[[2, 1], [1, 2], [2, 2], [2, 3]]], 
+			color: this.getNextColor()},
+		// Z
+		{shape: [
+			[[1, 1], [2, 1], [2, 2], [3, 2]],
+			[[3, 1], [2, 2], [3, 2], [2, 3]]], 
+			color: this.getNextColor()}
+	];
+}
+
+formTetris.figures = null;
 
 formTetris.getRandomFigure = function() {
 	const index = Math.floor(Math.random() * this.figures.length);
@@ -432,7 +733,7 @@ formTetris.getFigureStartPosition = function(figure) {
 	const minX = Math.min(...shape.map(coord => coord[0]));
 	const maxX = Math.max(...shape.map(coord => coord[0]));
 	const startX = Math.floor((this.gridWidth - (maxX - minX + 1)) / 2) - minX + 1;
-	return {x: startX, y: 0};
+	return {x: startX, y: -1};
 }
 
 formTetris.startNewLevel = function(level){
@@ -464,16 +765,45 @@ formTetris.setGameOver = function() {
 			clearInterval(this.gameInterval);
 			this.gameInterval = null;
 		}
-		alert('Game Over! Score: ' + this.score);
+		if (this.moveInterval) {
+			clearInterval(this.moveInterval);
+			this.moveInterval = null;
+		}
+		this.showGameOverPanel();
+}
+
+formTetris.showGameOverPanel = function() {
+	if (this.gameOverScore) {
+		this.gameOverScore.textContent = 'Score: ' + this.score;
+	}
+	if (this.gameOverPanel) {
+		this.gameOverPanel.style.display = 'block';
+	}
+}
+
+formTetris.hideGameOverPanel = function() {
+	if (this.gameOverPanel) {
+		this.gameOverPanel.style.display = 'none';
+	}
 }
 
 formTetris.goNextFigure = function() {
-	// Фиксируем текущую фигуру в сетке
+	// Фиксируем текущую фигуру в сетке и перекрашиваем в цвет уровня
 	for (let i = 0; i < this.currentFigureAdresses.length; i++) {
 		const cellX = this.currentFigureAdresses[i].x;
 		const cellY = this.currentFigureAdresses[i].y;
 		this.grid[cellY][cellX].value = 1;
 		this.grid[cellY][cellX].element = this.currentFigureElements[i];
+		
+		// Перекрашиваем блок в цвет текущего уровня
+		const element = this.currentFigureElements[i];
+		const lightColor = UIObject.brightenColor(this.levelColor, 60);
+		const darkColor = UIObject.brightenColor(this.levelColor, -60);
+		element.style.backgroundColor = this.levelColor;
+		element.style.borderTop = `3px solid ${lightColor}`;
+		element.style.borderLeft = `3px solid ${lightColor}`;
+		element.style.borderRight = `3px solid ${darkColor}`;
+		element.style.borderBottom = `3px solid ${darkColor}`;
 	}
 	
 	// Проверяем заполненные линии и удаляем их
@@ -482,6 +812,7 @@ formTetris.goNextFigure = function() {
 	// Переключаемся на следующую фигуру
 	this.currentFigure = this.nextFigure;
 	this.nextFigure = this.getRandomFigure();
+	this.showNextFigure();
 	this.currentFigurePosition = this.getFigureStartPosition(this.currentFigure);
 	this.currentFigureRotation = 0;
 	
@@ -521,45 +852,145 @@ formTetris.checkAndRemoveLines = function() {
 			if (elem) {
 				elem.remove();
 			}
+		}
+	}
+	
+	// Сдвигаем строки вниз
+	// Начинаем с самой нижней удаленной линии и идем вверх
+	let targetRow = this.gridHeight - 1;
+	for (let sourceRow = this.gridHeight - 1; sourceRow >= 0; sourceRow--) {
+		if (!fullLines.includes(sourceRow)) {
+			// Эта строка не удалена, копируем ее в целевую позицию
+			if (sourceRow !== targetRow) {
+				for (let x = 0; x < this.gridWidth; x++) {
+					this.grid[targetRow][x].value = this.grid[sourceRow][x].value;
+					this.grid[targetRow][x].element = this.grid[sourceRow][x].element;
+					
+					// Обновляем позицию элемента
+					if (this.grid[targetRow][x].element) {
+						this.grid[targetRow][x].element.style.top = this.grid[targetRow][x].top + 'px';
+						this.grid[targetRow][x].element.style.left = this.grid[targetRow][x].left + 'px';
+					}
+				}
+			}
+			targetRow--;
+		}
+	}
+	
+	// Очищаем верхние строки
+	for (let y = 0; y <= targetRow; y++) {
+		for (let x = 0; x < this.gridWidth; x++) {
 			this.grid[y][x].value = 0;
 			this.grid[y][x].element = null;
 		}
 	}
 	
-	// Создаем новую сетку, пропуская удаленные линии
-	const newGrid = [];
-	for (let y = 0; y < this.gridHeight; y++) {
-		if (!fullLines.includes(y)) {
-			newGrid.push(this.grid[y]);
-		}
+	// Обновляем счет
+	this.linesCleared += linesRemoved;
+	let scoreIncrement = 0;
+	switch (linesRemoved) {
+		case 1:
+			scoreIncrement = 100;
+			break;
+		case 2:
+			scoreIncrement = 300;
+			break;
+		case 3:
+			scoreIncrement = 500;
+			break;
+		case 4:
+			scoreIncrement = 800;
+			break;
+	}
+	this.score += scoreIncrement;
+	this.updateScore();
+	
+	// Проверяем, нужно ли повысить уровень
+	this.checkLevelUp();
+}
+
+formTetris.updateScore = function() {
+	if (this.scoreTextBox) {
+		this.scoreTextBox.setText('Score: ' + this.score);
+	}
+}
+
+formTetris.checkLevelUp = function() {
+	const newLevel = Math.floor(this.linesCleared / this.linesPerLevel) + 1;
+	if (newLevel > this.level) {
+		this.level = newLevel;
+		this.levelColor = this.getNextColor();
+		this.updateLevel();
+	}
+}
+
+formTetris.updateLevel = function() {
+	if (this.levelTextBox) {
+		this.levelTextBox.setText('Level: ' + this.level);
 	}
 	
-	// Добавляем пустые линии сверху
-	for (let i = 0; i < linesRemoved; i++) {
-		const emptyRow = [];
-		for (let x = 0; x < this.gridWidth; x++) {
-			emptyRow.push({value: 0, left: this.grid[0][x].left, top: this.grid[0][x].top, element: null});
-		}
-		newGrid.unshift(emptyRow);
+	// Увеличиваем скорость игры
+	this.speedInterval = 1000 - (this.level - 1) * 100;
+	if (this.speedInterval < 100) {
+		this.speedInterval = 100;
 	}
 	
-	// Обновляем координаты и визуальные элементы
-	for (let y = 0; y < this.gridHeight; y++) {
-		for (let x = 0; x < this.gridWidth; x++) {
-			const oldCell = newGrid[y][x];
-			const newTop = this.grid[y][x].top;
-			const newLeft = this.grid[y][x].left;
-			
-			this.grid[y][x].value = oldCell.value;
-			this.grid[y][x].element = oldCell.element;
-			
-			if (this.grid[y][x].element) {
-				this.grid[y][x].element.style.top = newTop + 'px';
-				this.grid[y][x].element.style.left = newLeft + 'px';
-			}
-		}
+	// Перезапускаем игровой цикл с новой скоростью
+	if (this.gameInterval) {
+		clearInterval(this.gameInterval);
+		this.gameInterval = setInterval(() => {
+			this.gameStep();
+		}, this.speedInterval);
 	}
+}
+
+formTetris.showNextFigure = function() {
+	if (!this.nextFigureArea || !this.nextFigure) return;
 	
+	// Очищаем предыдущее превью
+	this.nextFigureArea.innerHTML = '';
+	
+	const shape = this.nextFigure.shape[0];
+	const minX = Math.min(...shape.map(coord => coord[0]));
+	const maxX = Math.max(...shape.map(coord => coord[0]));
+	const minY = Math.min(...shape.map(coord => coord[1]));
+	const maxY = Math.max(...shape.map(coord => coord[1]));
+	
+	const figureWidth = maxX - minX + 1;
+	const figureHeight = maxY - minY + 1;
+	
+	// Получаем размеры области для центрирования
+	const areaWidth = parseInt(this.nextFigureArea.style.width);
+	const areaHeight = parseInt(this.nextFigureArea.style.height);
+	
+	// Вычисляем смещение для центрирования фигуры
+	const offsetX = (areaWidth - figureWidth * this.nextFigureSize) / 2;
+	const offsetY = (areaHeight - figureHeight * this.nextFigureSize) / 2;
+	
+	for (let i = 0; i < shape.length; i++) {
+		const cellX = shape[i][0] - minX;
+		const cellY = shape[i][1] - minY;
+		
+		const cellDiv = document.createElement('div');
+		cellDiv.style.position = 'absolute';
+		cellDiv.style.boxSizing = 'border-box';
+		cellDiv.style.width = this.nextFigureSize + 'px';
+		cellDiv.style.height = this.nextFigureSize + 'px';
+		cellDiv.style.left = (offsetX + cellX * this.nextFigureSize) + 'px';
+		cellDiv.style.top = (offsetY + cellY * this.nextFigureSize) + 'px';
+		
+		// Объемные границы в стиле Windows 95
+		const baseColor = this.nextFigure.color;
+		const lightColor = UIObject.brightenColor(baseColor, 60);
+		const darkColor = UIObject.brightenColor(baseColor, -60);
+		cellDiv.style.backgroundColor = baseColor;
+		cellDiv.style.borderTop = `3px solid ${lightColor}`;
+		cellDiv.style.borderLeft = `3px solid ${lightColor}`;
+		cellDiv.style.borderRight = `3px solid ${darkColor}`;
+		cellDiv.style.borderBottom = `3px solid ${darkColor}`;
+		
+		this.nextFigureArea.appendChild(cellDiv);
+	}
 }
 
 formTetris.moveFigureDown = function() {
@@ -574,7 +1005,112 @@ formTetris.moveFigureDown = function() {
 	});
 	if (isCollision){
 		this.goNextFigure();
+		return false; // Фигура зафиксирована, дальше опускать нечего
 	} else {
+		this.currentFigureAdresses = newAddresses;
+		this.showFigure(false);
+		return true; // Успешно опустили на один шаг
+	}
+}
+
+
+formTetris.moveFigureLeft = function(tempAddresses = undefined) {
+	const newAddresses = [];
+	let isCollision = false;
+	let addressesToUse = tempAddresses || this.currentFigureAdresses;
+	addressesToUse.forEach(elem => {
+		let newAdress = {x: elem.x - 1, y: elem.y};
+		if (this.checkCollision(newAdress.x, newAdress.y)){
+			isCollision = true;
+		}
+		newAddresses.push(newAdress);
+	});
+	if (tempAddresses) {
+		for (let i = 0; i < newAddresses.length; i++) {
+			tempAddresses[i] = newAddresses[i];
+		}
+	}
+	if (!isCollision){
+			this.currentFigureAdresses = newAddresses;
+			this.showFigure(false);
+		return true;
+	} else {
+		return false;
+	}
+}
+
+formTetris.moveFigureRight = function(tempAddresses = undefined) {
+	const newAddresses = [];
+	let isCollision = false;
+	let addressesToUse = tempAddresses || this.currentFigureAdresses;
+	addressesToUse.forEach(elem => {
+		let newAdress = {x: elem.x + 1, y: elem.y};
+		if (this.checkCollision(newAdress.x, newAdress.y)){
+			isCollision = true;
+		}
+		newAddresses.push(newAdress);
+	});
+	if (tempAddresses) {
+		for (let i = 0; i < newAddresses.length; i++) {
+			tempAddresses[i] = newAddresses[i];
+		}
+	}
+	if (!isCollision){
+			this.currentFigureAdresses = newAddresses;
+			this.showFigure(false);
+		return true;
+	} else {
+		return false;
+	}
+}
+
+formTetris.rotateFigure = function() {
+	const newAddresses = [];
+	let isCollision = false;
+	const newFigureRotation = (this.currentFigureRotation + 1) % this.currentFigure.shape.length;
+	const currentShape = this.currentFigure.shape[this.currentFigureRotation];
+	const newShape = this.currentFigure.shape[newFigureRotation];
+	for (let i = 0; i < this.currentFigureAdresses.length; i++) {
+		const shiftX = newShape[i][0] - currentShape[i][0];
+		const shiftY = newShape[i][1] - currentShape[i][1];
+		const newAdress = {
+			x: this.currentFigureAdresses[i].x + shiftX,
+			y: this.currentFigureAdresses[i].y + shiftY
+		};
+		if (this.checkCollision(newAdress.x, newAdress.y)){
+			isCollision = true;
+		}
+		newAddresses.push(newAdress);
+	}
+	if (isCollision){
+		//Попробуем сдвинуть фигуру влево или вправо
+		//Для палки нужно до 3 попыток в каждую сторону
+		//Количество попыток сдвига зависит от размера фигуры
+		const maxShifts = Math.max(...newShape.map(coord => coord[0])) - Math.min(...newShape.map(coord => coord[0])) + 1;
+		
+		//Попытка сдвинуть влево
+		let tempAddresses = newAddresses.slice();
+		for (let shift = 1; shift <= maxShifts; shift++){
+			if (this.moveFigureLeft(tempAddresses)){
+				this.currentFigureRotation = newFigureRotation;
+				this.currentFigureAdresses = tempAddresses;
+				this.showFigure(false);
+				return;
+			}
+		}
+		//Попытка сдвинуть вправо
+		tempAddresses = newAddresses.slice();
+		for (let shift = 1; shift <= maxShifts; shift++){
+			if (this.moveFigureRight(tempAddresses)){
+				this.currentFigureRotation = newFigureRotation;
+				this.currentFigureAdresses = tempAddresses;
+				this.showFigure(false);
+				return;
+			}
+		}
+	} else {
+		// Коллизии нет - просто применяем поворот
+		this.currentFigureRotation = newFigureRotation;
 		this.currentFigureAdresses = newAddresses;
 		this.showFigure(false);
 	}
@@ -585,21 +1121,36 @@ formTetris.gameStep = function() {
 }
 
 formTetris.newGame = function() {
+	this.hideGameOverPanel();
 	this.initializeGrid();
-	if (this.currentFigureElements){
-		for (let element of this.currentFigureElements){
-			element.remove();
+	setTimeout(() => {
+		if (this.currentFigureElements){
+			for (let element of this.currentFigureElements){
+				element.remove();
+			}
 		}
-	}
-	this.currentFigure = this.getRandomFigure();
-	this.nextFigure = this.getRandomFigure();
-	this.currentFigurePosition = this.getFigureStartPosition(this.currentFigure);
-	this.currentFigureRotation = 0;
-	this.score = 0;
-	this.level = 1;
-	this.linesCleared = 0;
-	this.isGameOver = false;
-	this.startNewLevel(this.level);
+		if (this.moveInterval) {
+			clearInterval(this.moveInterval);
+			this.moveInterval = null;
+		}
+		this.keysPressed = {};
+		this.dropHoldCount = 0;
+		this.colorIndex = 0;
+		this.figures = this.initializeFigures();
+		this.levelColor = this.getNextColor();
+		this.currentFigure = this.getRandomFigure();
+		this.nextFigure = this.getRandomFigure();
+		this.currentFigurePosition = this.getFigureStartPosition(this.currentFigure);
+		this.currentFigureRotation = 0;
+		this.score = 0;
+		this.level = 1;
+		this.linesCleared = 0;
+		this.isGameOver = false;
+		this.updateScore();
+		this.updateLevel();
+		this.showNextFigure();
+		this.startNewLevel(this.level);
+	}, 200);
 }
 
 formTetris.onDraw(document.body);

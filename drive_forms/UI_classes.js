@@ -173,6 +173,37 @@ class Form extends UIObject {
         this.dragOffsetY = 0;
         this.anchorToWindow = null; // 'center', 'bottom-right', или null
         this.windowResizeHandler = null;
+        this.lockAspectRatio = false; // Блокировка изменения пропорций
+        this.initialAspectRatio = 0; // Начальное соотношение сторон
+        this.btnMaximize = null; // Ссылка на кнопку максимизации
+        this.btnMaximizeCanvas = null; // Canvas с иконкой кнопки maximize
+    }
+
+    activate() {
+        if (this.element) {
+            // Деактивируем все другие формы
+            Form._allForms.forEach(form => {
+                if (form !== this) {
+                    form.deactivate();
+                }
+            });
+            
+            this.z = ++Form._globalZIndex;
+            this.element.style.zIndex = this.z;
+            this.element.focus();
+            
+            // Делаем заголовок синим
+            if (this.titleBar) {
+                this.titleBar.style.backgroundColor = '#000080';
+            }
+        }
+    }
+    
+    deactivate() {
+        // Делаем заголовок темно-серым
+        if (this.titleBar) {
+            this.titleBar.style.backgroundColor = '#808080';
+        }
     }
     
     setTitle(title) {
@@ -200,6 +231,37 @@ class Form extends UIObject {
     
     getResizable() {
         return this.resizable;
+    }
+    
+    setLockAspectRatio(value) {
+        this.lockAspectRatio = value;
+        // Обновляем состояние кнопки maximize
+        if (this.btnMaximize && this.btnMaximizeCanvas) {
+            this.btnMaximize.disabled = value;
+            this.btnMaximize.style.cursor = value ? 'not-allowed' : 'pointer';
+            
+            // Перерисовываем иконку с нужным цветом
+            const ctx = this.btnMaximizeCanvas.getContext('2d');
+            ctx.clearRect(0, 0, 12, 12);
+            
+            if (value) {
+                // Неактивная - цвет темной границы (нижняя и правая кромка)
+                const baseColor = UIObject.getClientConfigValue('defaultColor', '#c0c0c0');
+                ctx.fillStyle = UIObject.brightenColor(baseColor, -60);
+            } else {
+                // Активная - черная
+                ctx.fillStyle = '#000000';
+            }
+            
+            ctx.fillRect(2, 2, 8, 1); // Верхняя линия
+            ctx.fillRect(2, 2, 1, 8); // Левая линия
+            ctx.fillRect(9, 2, 1, 8); // Правая линия
+            ctx.fillRect(2, 9, 8, 1); // Нижняя линия
+        }
+    }
+    
+    getLockAspectRatio() {
+        return this.lockAspectRatio;
     }
     
     setAnchorToWindow(anchor) {
@@ -238,6 +300,11 @@ class Form extends UIObject {
     
     onDraw(container) {
         if (!this.element) {
+            // Сохраняем начальное соотношение сторон для lockAspectRatio
+            if (this.width > 0 && this.height > 0) {
+                this.initialAspectRatio = this.width / this.height;
+            }
+            
             this.element = document.createElement('div');
             this.element.style.position = 'absolute';
             this.element.style.left = this.x + 'px';
@@ -245,6 +312,11 @@ class Form extends UIObject {
             this.element.style.width = this.width + 'px';
             this.element.style.height = this.height + 'px';
             this.element.style.zIndex = this.z;
+            this.element.tabIndex = 0;
+            this.element.style.outline = 'none';
+            
+            // Добавляем форму в глобальный массив
+            Form._allForms.push(this);
             
             // Ретро-стиль: объёмная рамка
             // Используем client_config.json (если загружен) или значение по умолчанию
@@ -270,9 +342,9 @@ class Form extends UIObject {
                 }
             });
             
-            // Создаём заголовок с синей полосой
+            // Создаём заголовок (изначально неактивный - темно-серый)
             this.titleBar = document.createElement('div');
-            this.titleBar.style.backgroundColor = '#000080';
+            this.titleBar.style.backgroundColor = '#808080';
             this.titleBar.style.color = '#ffffff';
             this.titleBar.style.fontWeight = 'bold';
             this.titleBar.style.fontSize = '14px';
@@ -354,6 +426,15 @@ class Form extends UIObject {
             applyTitleButtonColors(btnMaximize, UIObject.getClientConfigValue('defaultColor', initialBg));
             buttonsContainer.appendChild(btnMaximize);
             
+            // Сохраняем ссылку на кнопку maximize и её canvas
+            this.btnMaximize = btnMaximize;
+            this.btnMaximizeCanvas = canvasMax;
+            
+            // Применяем блокировку если установлена
+            if (this.lockAspectRatio) {
+                this.setLockAspectRatio(true);
+            }
+            
             // Кнопка закрытия
             const btnClose = document.createElement('button');
             Object.assign(btnClose.style, buttonStyle);
@@ -397,7 +478,7 @@ class Form extends UIObject {
             // (когда titleBar.offsetHeight уже доступен)
             setTimeout(() => {
                 if (this.contentArea && this.titleBar) {
-                    this.contentArea.style.height = 'calc(100% - ' + this.titleBar.offsetHeight + 'px)';
+                    this.contentArea.style.height = 'calc(100% - ' + (this.titleBar.offsetHeight + 0) + 'px)';
                 }
             }, 0);
             
@@ -473,41 +554,83 @@ class Form extends UIObject {
                 
                 document.addEventListener('mousemove', (e) => {
                     if (this.isResizing) {
-                        if (this.resizeDirection.right) {
-                            const newWidth = e.clientX - this.x;
-                            
-                            // Проверяем минимальную ширину с учетом заголовка
-                            if (this.titleBar) {
-                                const titleBarHeight = this.titleBar.offsetHeight;
-                                const tempWidth = this.element.style.width;
-                                this.element.style.width = newWidth + 'px';
-                                const newTitleBarHeight = this.titleBar.offsetHeight;
+                        if (this.lockAspectRatio) {
+                            // При блокировке пропорций изменяем оба размера пропорционально
+                            if (this.resizeDirection.right || this.resizeDirection.bottom) {
+                                const newWidth = e.clientX - this.x;
+                                const newHeight = e.clientY - this.y;
                                 
-                                // Если заголовок начал переноситься на новую строку, откатываем
-                                if (newTitleBarHeight > titleBarHeight || newWidth < 120) {
-                                    this.element.style.width = tempWidth;
-                                    return;
+                                let targetWidth = newWidth;
+                                let targetHeight = newHeight;
+                                
+                                // Определяем что изменяется и вычисляем другое измерение
+                                if (this.resizeDirection.right && this.resizeDirection.bottom) {
+                                    // Изменяем по углу - берем среднее или по большему изменению
+                                    const widthRatio = newWidth / this.width;
+                                    const heightRatio = newHeight / this.height;
+                                    
+                                    if (Math.abs(widthRatio - 1) > Math.abs(heightRatio - 1)) {
+                                        targetHeight = newWidth / this.initialAspectRatio;
+                                    } else {
+                                        targetWidth = newHeight * this.initialAspectRatio;
+                                    }
+                                } else if (this.resizeDirection.right) {
+                                    targetHeight = newWidth / this.initialAspectRatio;
+                                } else if (this.resizeDirection.bottom) {
+                                    targetWidth = newHeight * this.initialAspectRatio;
+                                }
+                                
+                                if (targetWidth > 100 && targetHeight > 50) {
+                                    this.setWidth(targetWidth);
+                                    this.setHeight(targetHeight);
+                                    this.element.style.width = this.width + 'px';
+                                    this.element.style.height = this.height + 'px';
                                 }
                             }
-                            
-                            if (newWidth > 100) {
-                                this.setWidth(newWidth);
-                                this.element.style.width = this.width + 'px';
+                        } else {
+                            // Обычное изменение размера без блокировки пропорций
+                            if (this.resizeDirection.right) {
+                                const newWidth = e.clientX - this.x;
+                                
+                                // Проверяем минимальную ширину с учетом заголовка
+                                if (this.titleBar) {
+                                    const titleBarHeight = this.titleBar.offsetHeight;
+                                    const tempWidth = this.element.style.width;
+                                    this.element.style.width = newWidth + 'px';
+                                    const newTitleBarHeight = this.titleBar.offsetHeight;
+                                    
+                                    // Если заголовок начал переноситься на новую строку, откатываем
+                                    if (newTitleBarHeight > titleBarHeight || newWidth < 120) {
+                                        this.element.style.width = tempWidth;
+                                        return;
+                                    }
+                                }
+                                
+                                if (newWidth > 100) {
+                                    this.setWidth(newWidth);
+                                    this.element.style.width = this.width + 'px';
+                                }
+                            }
+                            if (this.resizeDirection.bottom) {
+                                const newHeight = e.clientY - this.y;
+                                if (newHeight > 50) {
+                                    this.setHeight(newHeight);
+                                    this.element.style.height = this.height + 'px';
+                                }
                             }
                         }
-                        if (this.resizeDirection.bottom) {
-                            const newHeight = e.clientY - this.y;
-                            if (newHeight > 50) {
-                                this.setHeight(newHeight);
-                                this.element.style.height = this.height + 'px';
-                            }
-                        }
+                        // Вызываем onResizing во время изменения размера
+                        this.onResizing();
                     }
                 });
                 
                 document.addEventListener('mouseup', () => {
-                    this.isResizing = false;
-                    this.resizeDirection = null;
+                    if (this.isResizing) {
+                        this.isResizing = false;
+                        this.resizeDirection = null;
+                        // Вызываем onResize после завершения изменения размера
+                        this.onResize();
+                    }
                 });
             }
         }
@@ -515,46 +638,143 @@ class Form extends UIObject {
         if (container) {
             container.appendChild(this.element);
         }
+
+        // Добавляем обработчики событий для формы
+        this.element.addEventListener('mousedown', (e) => {
+            this.activate();
+        });
+        
+        this.element.addEventListener('click', (e) => {
+            this.onClick(e);
+        });
+
+        this.element.addEventListener('dblclick', (e) => {
+            this.onDoubleClick(e);
+        });
+
+        this.element.addEventListener('mouseover', (e) => {
+            this.onHover(e);
+        });
+
+        // Глобальный обработчик клавиш - срабатывает только для верхней формы
+        if (!Form._globalKeyHandler) {
+            Form._globalKeyHandler = (e) => {
+                // Находим форму с максимальным z
+                let topForm = null;
+                let maxZ = -1;
+                Form._allForms.forEach(form => {
+                    if (form.z > maxZ) {
+                        maxZ = form.z;
+                        topForm = form;
+                    }
+                });
                 
+                // Вызываем onKeyPressed только у верхней формы
+                if (topForm) {
+                    topForm.onKeyPressed(e);
+                }
+            };
+            
+            Form._globalKeyUpHandler = (e) => {
+                // Находим форму с максимальным z
+                let topForm = null;
+                let maxZ = -1;
+                Form._allForms.forEach(form => {
+                    if (form.z > maxZ) {
+                        maxZ = form.z;
+                        topForm = form;
+                    }
+                });
+                
+                // Вызываем onKeyReleased только у верхней формы
+                if (topForm) {
+                    topForm.onKeyReleased(e);
+                }
+            };
+            
+            document.addEventListener('keydown', Form._globalKeyHandler);
+            document.addEventListener('keyup', Form._globalKeyUpHandler);
+        }
+        
+        // Сохраняем ссылку на экземпляр формы в элементе
+        this.element._formInstance = this;
+        this.element.setAttribute('data-is-form', 'true');
+
+        // Устанавливаем z-index для новой формы
+        this.z = ++Form._globalZIndex;
+        this.element.style.zIndex = this.z;
+        
         return this.element;
     }
     
     onClick(event) {
         // Handle click event
-        console.log('Click event:', event);
     }
 
     onDoubleClick(event) {
         // Handle double click event
-        console.log('Double click event:', event);
     }
 
     onLeftClick(event) {
         // Handle left click event
-        if (event.button === 0) {
-            console.log('Left click event:', event);
-        }
     }
 
     onHover(event) {
         // Handle hover event
-        console.log('Hover event:', event);
     }
 
     onMouseDown(event) {
         // Handle mouse down event
-        console.log('Mouse down event:', event);
     }
 
     onMouseUp(event) {
         // Handle mouse up event
-        console.log('Mouse up event:', event);
     }
 
     onKeyPressed(event) {
         // Handle key pressed event
-        console.log('Key pressed:', event.key);
     }
+
+    onKeyReleased(event) {
+        // Handle key released event
+    }
+
+    onResizing() {
+        // Handle resizing event (called during resize)
+    }
+
+    onResize() {
+        // Handle resize event (called after resize completes)
+    }
+}
+
+// Статические свойства для управления формами
+Form._globalZIndex = 0;
+Form._allForms = []; // Массив всех созданных форм
+
+// Активируем самую верхнюю форму после загрузки страницы
+if (typeof window !== 'undefined') {
+    window.addEventListener('DOMContentLoaded', () => {
+        // Даем время для создания всех форм
+        setTimeout(() => {
+            if (Form._allForms.length > 0) {
+                // Находим форму с максимальным z
+                let topForm = null;
+                let maxZ = -1;
+                Form._allForms.forEach(form => {
+                    if (form.z > maxZ) {
+                        maxZ = form.z;
+                        topForm = form;
+                    }
+                });
+                
+                // Активируем верхнюю форму
+                if (topForm) {
+                    topForm.activate();
+                }
+            }
+        }, 100);
+    });
 }
 
 class Button extends UIObject {
