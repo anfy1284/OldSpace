@@ -1,9 +1,10 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const qs = require('querystring');
 
-// Глобальные хранилища (в будущем заменим на БД)
-let sessions = {};
+// Сессии и клиенты теперь через sessionManager
+const { getOrCreateSession } = require('./db/sessionManager');
 let clients = {};
 // Настройки приложения (директория и псевдоним берутся из конфигурации)
 let config;
@@ -85,7 +86,9 @@ function handleApiRequest(req, res) {
 }
 
 function createServer() {
-    const server = http.createServer((req, res) => {
+    const server = http.createServer(async (req, res) => {
+        // Получаем или создаём сессию для каждого запроса
+        await getOrCreateSession(req, res);
         if (req.url === '/api' && req.method === 'POST') {
             handleApiRequest(req, res);
         } else {
@@ -103,7 +106,7 @@ function createServer() {
               });
               res.end(data);
                 });
-                        } else if (req.url === '/client.js') {
+            } else if (req.url === '/client.js') {
                 fs.readFile(path.join(__dirname, 'client.js'), 'utf8', (err, data) => {
               if (err) {
                   res.writeHead(404, { 'Content-Type': 'text/plain' });

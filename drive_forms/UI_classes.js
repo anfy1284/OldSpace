@@ -50,7 +50,7 @@ class UIObject {
         const cfg = UIObject._clientConfig;
         return (cfg && Object.prototype.hasOwnProperty.call(cfg, key)) ? cfg[key] : def;
     }
-    
+
     // Utility: brighten a CSS color by amount (0-255). Supports #RGB, #RRGGBB and rgb()/rgba().
     static brightenColor(color, amount = 20) {
         try {
@@ -98,7 +98,22 @@ class UIObject {
             return color;
         }
     }
-    
+
+    // Helper to style elements
+    static styleElement(element, x, y, w, h, fSize) {
+        if (element && typeof element.getElement === 'function') {
+            const el = element.getElement();
+            if (el) {
+                el.style.position = 'absolute';
+                el.style.left = x + 'px';
+                el.style.top = y + 'px';
+                el.style.width = w + 'px';
+                el.style.height = h + 'px';
+                el.style.fontSize = fSize + 'px';
+            }
+        }
+    }
+
     setParent(parent) {
         this.parent = parent;
     }
@@ -158,7 +173,7 @@ class UIObject {
 }
 
 class Form extends UIObject {
-    
+
     constructor() {
         super();
         this.title = '';
@@ -187,63 +202,63 @@ class Form extends UIObject {
                     form.deactivate();
                 }
             });
-            
+
             this.z = ++Form._globalZIndex;
             this.element.style.zIndex = this.z;
             this.element.focus();
-            
+
             // Делаем заголовок синим
             if (this.titleBar) {
                 this.titleBar.style.backgroundColor = '#000080';
             }
         }
     }
-    
+
     deactivate() {
         // Делаем заголовок темно-серым
         if (this.titleBar) {
             this.titleBar.style.backgroundColor = '#808080';
         }
     }
-    
+
     setTitle(title) {
         this.title = title;
         if (this.titleBar) {
             this.titleBar.textContent = title;
         }
     }
-    
+
     getTitle() {
         return this.title;
     }
-    
+
     setMovable(value) {
         this.movable = value;
     }
-    
+
     getMovable() {
         return this.movable;
     }
-    
+
     setResizable(value) {
         this.resizable = value;
     }
-    
+
     getResizable() {
         return this.resizable;
     }
-    
+
     setLockAspectRatio(value) {
         this.lockAspectRatio = value;
         // Обновляем состояние кнопки maximize
         if (this.btnMaximize && this.btnMaximizeCanvas) {
             this.btnMaximize.disabled = value;
             this.btnMaximize.style.cursor = value ? 'not-allowed' : 'pointer';
-            
+
             // Перерисовываем иконку с нужным цветом
             const ctx = this.btnMaximizeCanvas.getContext('2d');
             ctx.clearRect(0, 0, 12, 12);
-            
+
             if (value) {
                 // Неактивная - цвет темной границы (нижняя и правая кромка)
                 const baseColor = UIObject.getClientConfigValue('defaultColor', '#c0c0c0');
@@ -252,18 +267,18 @@ class Form extends UIObject {
                 // Активная - черная
                 ctx.fillStyle = '#000000';
             }
-            
+
             ctx.fillRect(2, 2, 8, 1); // Верхняя линия
             ctx.fillRect(2, 2, 1, 8); // Левая линия
             ctx.fillRect(9, 2, 1, 8); // Правая линия
             ctx.fillRect(2, 9, 8, 1); // Нижняя линия
         }
     }
-    
+
     getLockAspectRatio() {
         return this.lockAspectRatio;
     }
-    
+
     setAnchorToWindow(anchor) {
         this.anchorToWindow = anchor;
         if (anchor && !this.windowResizeHandler) {
@@ -274,15 +289,15 @@ class Form extends UIObject {
             this.windowResizeHandler = null;
         }
     }
-    
+
     getAnchorToWindow() {
         return this.anchorToWindow;
     }
-    
+
     getContentArea() {
         return this.contentArea;
     }
-    
+
     updatePositionOnResize() {
         if (this.anchorToWindow === 'center') {
             this.setX((window.innerWidth - this.width) / 2);
@@ -291,20 +306,20 @@ class Form extends UIObject {
             this.setX(window.innerWidth - this.width - 40);
             this.setY(window.innerHeight - this.height - 60);
         }
-        
+
         if (this.element) {
             this.element.style.left = this.x + 'px';
             this.element.style.top = this.y + 'px';
         }
     }
-    
+
     onDraw(container) {
         if (!this.element) {
             // Сохраняем начальное соотношение сторон для lockAspectRatio
             if (this.width > 0 && this.height > 0) {
                 this.initialAspectRatio = this.width / this.height;
             }
-            
+
             this.element = document.createElement('div');
             this.element.style.position = 'absolute';
             this.element.style.left = this.x + 'px';
@@ -314,16 +329,16 @@ class Form extends UIObject {
             this.element.style.zIndex = this.z;
             this.element.tabIndex = 0;
             this.element.style.outline = 'none';
-            
+
             // Добавляем форму в глобальный массив
             Form._allForms.push(this);
-            
+
             // Ретро-стиль: объёмная рамка
             // Используем client_config.json (если загружен) или значение по умолчанию
             const initialBg = UIObject.getClientConfigValue('defaultColor', '#c0c0c0');
             const bgColor = initialBg;
             this.element.style.backgroundColor = bgColor;
-            
+
             this.element.style.borderTop = `2px solid ${UIObject.brightenColor(bgColor, 60)}`;
             this.element.style.borderLeft = `2px solid ${UIObject.brightenColor(bgColor, 60)}`;
             this.element.style.borderRight = `2px solid ${UIObject.brightenColor(bgColor, -60)}`;
@@ -341,7 +356,7 @@ class Form extends UIObject {
                     this.element.style.borderBottom = `2px solid ${UIObject.brightenColor(finalColor, -60)}`;
                 }
             });
-            
+
             // Создаём заголовок (изначально неактивный - темно-серый)
             this.titleBar = document.createElement('div');
             this.titleBar.style.backgroundColor = '#808080';
@@ -354,12 +369,12 @@ class Form extends UIObject {
             this.titleBar.style.display = 'flex';
             this.titleBar.style.justifyContent = 'space-between';
             this.titleBar.style.alignItems = 'center';
-            
+
             // Текст заголовка
             const titleText = document.createElement('span');
             titleText.textContent = this.title;
             this.titleBar.appendChild(titleText);
-            
+
             // Контейнер для кнопок
             const buttonsContainer = document.createElement('div');
             buttonsContainer.style.display = 'flex';
@@ -408,7 +423,7 @@ class Form extends UIObject {
             // Применяем 3D-стиль по теме
             applyTitleButtonColors(btnMinimize, UIObject.getClientConfigValue('defaultColor', initialBg));
             buttonsContainer.appendChild(btnMinimize);
-            
+
             // Кнопка максимизации
             const btnMaximize = document.createElement('button');
             Object.assign(btnMaximize.style, buttonStyle);
@@ -425,16 +440,16 @@ class Form extends UIObject {
             // Применяем 3D-стиль по теме
             applyTitleButtonColors(btnMaximize, UIObject.getClientConfigValue('defaultColor', initialBg));
             buttonsContainer.appendChild(btnMaximize);
-            
+
             // Сохраняем ссылку на кнопку maximize и её canvas
             this.btnMaximize = btnMaximize;
             this.btnMaximizeCanvas = canvasMax;
-            
+
             // Применяем блокировку если установлена
             if (this.lockAspectRatio) {
                 this.setLockAspectRatio(true);
             }
-            
+
             // Кнопка закрытия
             const btnClose = document.createElement('button');
             Object.assign(btnClose.style, buttonStyle);
@@ -454,7 +469,7 @@ class Form extends UIObject {
             // Применяем 3D-стиль по теме
             applyTitleButtonColors(btnClose, UIObject.getClientConfigValue('defaultColor', initialBg));
             buttonsContainer.appendChild(btnClose);
-            
+
             this.titleBar.appendChild(buttonsContainer);
             this.element.appendChild(this.titleBar);
 
@@ -465,7 +480,7 @@ class Form extends UIObject {
                 applyTitleButtonColors(btnMaximize, base);
                 applyTitleButtonColors(btnClose, base);
             });
-            
+
             // Создаём область контента
             this.contentArea = document.createElement('div');
             this.contentArea.style.position = 'relative';
@@ -473,7 +488,7 @@ class Form extends UIObject {
             this.contentArea.style.overflow = 'auto';
             this.contentArea.style.boxSizing = 'border-box';
             this.element.appendChild(this.contentArea);
-            
+
             // Устанавливаем высоту contentArea после добавления в DOM
             // (когда titleBar.offsetHeight уже доступен)
             setTimeout(() => {
@@ -481,11 +496,11 @@ class Form extends UIObject {
                     this.contentArea.style.height = 'calc(100% - ' + (this.titleBar.offsetHeight + 0) + 'px)';
                 }
             }, 0);
-            
+
             // Добавляем перетаскивание формы за заголовок
             if (this.movable) {
                 this.titleBar.style.cursor = 'move';
-                
+
                 this.titleBar.addEventListener('mousedown', (e) => {
                     if (e.target === this.titleBar || e.target.tagName === 'SPAN') {
                         this.isDragging = true;
@@ -494,7 +509,7 @@ class Form extends UIObject {
                         e.preventDefault();
                     }
                 });
-                
+
                 document.addEventListener('mousemove', (e) => {
                     if (this.isDragging) {
                         this.setX(e.clientX - this.dragOffsetX);
@@ -503,26 +518,26 @@ class Form extends UIObject {
                         this.element.style.top = this.y + 'px';
                     }
                 });
-                
+
                 document.addEventListener('mouseup', () => {
                     this.isDragging = false;
                 });
             }
-            
+
             // Добавляем изменение размеров формы
             if (this.resizable) {
                 const resizeBorderSize = 4;
-                
+
                 this.element.addEventListener('mousemove', (e) => {
                     if (this.isResizing) return;
-                    
+
                     const rect = this.element.getBoundingClientRect();
                     const mouseX = e.clientX;
                     const mouseY = e.clientY;
-                    
+
                     const nearRight = mouseX >= rect.right - resizeBorderSize && mouseX <= rect.right;
                     const nearBottom = mouseY >= rect.bottom - resizeBorderSize && mouseY <= rect.bottom;
-                    
+
                     if (nearRight && nearBottom) {
                         this.element.style.cursor = 'nwse-resize';
                     } else if (nearRight) {
@@ -533,15 +548,15 @@ class Form extends UIObject {
                         this.element.style.cursor = 'default';
                     }
                 });
-                
+
                 this.element.addEventListener('mousedown', (e) => {
                     const rect = this.element.getBoundingClientRect();
                     const mouseX = e.clientX;
                     const mouseY = e.clientY;
-                    
+
                     const nearRight = mouseX >= rect.right - resizeBorderSize && mouseX <= rect.right;
                     const nearBottom = mouseY >= rect.bottom - resizeBorderSize && mouseY <= rect.bottom;
-                    
+
                     if (nearRight || nearBottom) {
                         this.isResizing = true;
                         this.resizeDirection = {
@@ -551,7 +566,7 @@ class Form extends UIObject {
                         e.preventDefault();
                     }
                 });
-                
+
                 document.addEventListener('mousemove', (e) => {
                     if (this.isResizing) {
                         if (this.lockAspectRatio) {
@@ -559,16 +574,16 @@ class Form extends UIObject {
                             if (this.resizeDirection.right || this.resizeDirection.bottom) {
                                 const newWidth = e.clientX - this.x;
                                 const newHeight = e.clientY - this.y;
-                                
+
                                 let targetWidth = newWidth;
                                 let targetHeight = newHeight;
-                                
+
                                 // Определяем что изменяется и вычисляем другое измерение
                                 if (this.resizeDirection.right && this.resizeDirection.bottom) {
                                     // Изменяем по углу - берем среднее или по большему изменению
                                     const widthRatio = newWidth / this.width;
                                     const heightRatio = newHeight / this.height;
-                                    
+
                                     if (Math.abs(widthRatio - 1) > Math.abs(heightRatio - 1)) {
                                         targetHeight = newWidth / this.initialAspectRatio;
                                     } else {
@@ -579,7 +594,7 @@ class Form extends UIObject {
                                 } else if (this.resizeDirection.bottom) {
                                     targetWidth = newHeight * this.initialAspectRatio;
                                 }
-                                
+
                                 if (targetWidth > 100 && targetHeight > 50) {
                                     this.setWidth(targetWidth);
                                     this.setHeight(targetHeight);
@@ -591,21 +606,21 @@ class Form extends UIObject {
                             // Обычное изменение размера без блокировки пропорций
                             if (this.resizeDirection.right) {
                                 const newWidth = e.clientX - this.x;
-                                
+
                                 // Проверяем минимальную ширину с учетом заголовка
                                 if (this.titleBar) {
                                     const titleBarHeight = this.titleBar.offsetHeight;
                                     const tempWidth = this.element.style.width;
                                     this.element.style.width = newWidth + 'px';
                                     const newTitleBarHeight = this.titleBar.offsetHeight;
-                                    
+
                                     // Если заголовок начал переноситься на новую строку, откатываем
                                     if (newTitleBarHeight > titleBarHeight || newWidth < 120) {
                                         this.element.style.width = tempWidth;
                                         return;
                                     }
                                 }
-                                
+
                                 if (newWidth > 100) {
                                     this.setWidth(newWidth);
                                     this.element.style.width = this.width + 'px';
@@ -623,7 +638,7 @@ class Form extends UIObject {
                         this.onResizing();
                     }
                 });
-                
+
                 document.addEventListener('mouseup', () => {
                     if (this.isResizing) {
                         this.isResizing = false;
@@ -634,7 +649,7 @@ class Form extends UIObject {
                 });
             }
         }
-        
+
         if (container) {
             container.appendChild(this.element);
         }
@@ -643,7 +658,7 @@ class Form extends UIObject {
         this.element.addEventListener('mousedown', (e) => {
             this.activate();
         });
-        
+
         this.element.addEventListener('click', (e) => {
             this.onClick(e);
         });
@@ -668,13 +683,13 @@ class Form extends UIObject {
                         topForm = form;
                     }
                 });
-                
+
                 // Вызываем onKeyPressed только у верхней формы
                 if (topForm) {
                     topForm.onKeyPressed(e);
                 }
             };
-            
+
             Form._globalKeyUpHandler = (e) => {
                 // Находим форму с максимальным z
                 let topForm = null;
@@ -685,17 +700,17 @@ class Form extends UIObject {
                         topForm = form;
                     }
                 });
-                
+
                 // Вызываем onKeyReleased только у верхней формы
                 if (topForm) {
                     topForm.onKeyReleased(e);
                 }
             };
-            
+
             document.addEventListener('keydown', Form._globalKeyHandler);
             document.addEventListener('keyup', Form._globalKeyUpHandler);
         }
-        
+
         // Сохраняем ссылку на экземпляр формы в элементе
         this.element._formInstance = this;
         this.element.setAttribute('data-is-form', 'true');
@@ -703,10 +718,10 @@ class Form extends UIObject {
         // Устанавливаем z-index для новой формы
         this.z = ++Form._globalZIndex;
         this.element.style.zIndex = this.z;
-        
+
         return this.element;
     }
-    
+
     onClick(event) {
         // Handle click event
     }
@@ -767,7 +782,7 @@ if (typeof window !== 'undefined') {
                         topForm = form;
                     }
                 });
-                
+
                 // Активируем верхнюю форму
                 if (topForm) {
                     topForm.activate();
@@ -778,7 +793,7 @@ if (typeof window !== 'undefined') {
 }
 
 class Button extends UIObject {
-    
+
     constructor(parentElement = null) {
         super();
         this.caption = '';
@@ -791,7 +806,7 @@ class Button extends UIObject {
             this.parentElement = null;
         }
     }
-    
+
     setCaption(caption) {
         this.caption = caption;
         if (this.element) {
@@ -807,7 +822,7 @@ class Button extends UIObject {
         if (!this.element) {
             this.element = document.createElement('button');
             this.element.textContent = this.caption;
-            
+
             // Если parentElement не задан, используем абсолютное позиционирование
             if (!this.parentElement) {
                 this.element.style.position = 'absolute';
@@ -817,7 +832,7 @@ class Button extends UIObject {
                 this.element.style.height = this.height + 'px';
                 this.element.style.zIndex = this.z;
             }
-            
+
             // Ретро-стиль кнопки (цвета из client_config)
             const btnBase = UIObject.getClientConfigValue('defaultColor', '#c0c0c0');
             const btnLight = UIObject.brightenColor(btnBase, 60);
@@ -844,7 +859,7 @@ class Button extends UIObject {
                 this.element.style.borderRight = `2px solid ${dark}`;
                 this.element.style.borderBottom = `2px solid ${dark}`;
             });
-            
+
             // Эффект нажатия
             this.element.addEventListener('mousedown', (e) => {
                 this.element.style.borderTop = '2px solid #808080';
@@ -852,7 +867,7 @@ class Button extends UIObject {
                 this.element.style.borderRight = '2px solid #ffffff';
                 this.element.style.borderBottom = '2px solid #ffffff';
                 this.onMouseDown(e);
-                
+
                 // Обработчик отпускания кнопки мыши где угодно
                 const mouseUpHandler = (e) => {
                     this.element.style.borderTop = '2px solid #ffffff';
@@ -864,30 +879,30 @@ class Button extends UIObject {
                 };
                 document.addEventListener('mouseup', mouseUpHandler);
             });
-            
+
             this.element.addEventListener('click', (e) => {
                 this.onClick(e);
             });
-            
+
             this.element.addEventListener('dblclick', (e) => {
                 this.onDoubleClick(e);
             });
-            
+
             this.element.addEventListener('mouseover', (e) => {
                 this.onHover(e);
             });
         }
-        
+
         if (container) {
             container.appendChild(this.element);
         }
-        
+
         return this.element;
     }
 }
 
 class TextBox extends UIObject {
-    
+
     constructor(parentElement = null) {
         super();
         this.text = '';
@@ -896,51 +911,51 @@ class TextBox extends UIObject {
         this.maxLength = null;
         this.parentElement = parentElement;
     }
-    
+
     setText(text) {
         this.text = text;
         if (this.element) {
             this.element.value = text;
         }
     }
-    
+
     getText() {
         return this.element ? this.element.value : this.text;
     }
-    
+
     setPlaceholder(placeholder) {
         this.placeholder = placeholder;
         if (this.element) {
             this.element.placeholder = placeholder;
         }
     }
-    
+
     getPlaceholder() {
         return this.placeholder;
     }
-    
+
     setReadOnly(readOnly) {
         this.readOnly = readOnly;
         if (this.element) {
             this.element.readOnly = readOnly;
         }
     }
-    
+
     getReadOnly() {
         return this.readOnly;
     }
-    
+
     setMaxLength(maxLength) {
         this.maxLength = maxLength;
         if (this.element && maxLength) {
             this.element.maxLength = maxLength;
         }
     }
-    
+
     getMaxLength() {
         return this.maxLength;
     }
-    
+
     onDraw(container) {
         if (!this.element) {
             this.element = document.createElement('input');
@@ -948,15 +963,15 @@ class TextBox extends UIObject {
             this.element.value = this.text;
             this.element.placeholder = this.placeholder;
             this.element.readOnly = this.readOnly;
-            
+
             // Добавляем уникальный id для устранения предупреждения браузера
             this.element.id = 'textbox_' + Math.random().toString(36).substr(2, 9);
             this.element.name = this.element.id;
-            
+
             if (this.maxLength) {
                 this.element.maxLength = this.maxLength;
             }
-            
+
             // Позиционирование
             if (!this.parentElement) {
                 this.element.style.position = 'absolute';
@@ -964,10 +979,10 @@ class TextBox extends UIObject {
                 this.element.style.top = this.y + 'px';
                 this.element.style.zIndex = this.z;
             }
-            
+
             this.element.style.width = this.width + 'px';
             this.element.style.height = this.height + 'px';
-            
+
             // Ретро-стиль текстового поля: белый фон, границы по теме из client_config
             const tbBase = UIObject.getClientConfigValue('defaultColor', '#c0c0c0');
             const tbLight = UIObject.brightenColor(tbBase, 60);
@@ -994,39 +1009,118 @@ class TextBox extends UIObject {
                 this.element.style.borderRight = `2px solid ${light}`;
                 this.element.style.borderBottom = `2px solid ${light}`;
             });
-            
+
             // События
             this.element.addEventListener('input', (e) => {
                 this.text = e.target.value;
             });
-            
+
             this.element.addEventListener('click', (e) => {
                 this.onClick(e);
             });
-            
+
             this.element.addEventListener('dblclick', (e) => {
                 this.onDoubleClick(e);
             });
-            
+
             this.element.addEventListener('keydown', (e) => {
                 this.onKeyPressed(e);
             });
-            
+
             this.element.addEventListener('focus', (e) => {
                 this.element.style.borderTop = '2px solid #000080';
                 this.element.style.borderLeft = '2px solid #000080';
             });
-            
+
             this.element.addEventListener('blur', (e) => {
                 this.element.style.borderTop = '2px solid #808080';
                 this.element.style.borderLeft = '2px solid #808080';
             });
         }
-        
+
         if (container) {
             container.appendChild(this.element);
         }
-        
+
+        return this.element;
+    }
+}
+
+class Label extends UIObject {
+    constructor(parentElement = null) {
+        super();
+        this.text = '';
+        this.parentElement = parentElement;
+        this.fontSize = '11px';
+        this.fontFamily = 'MS Sans Serif, sans-serif';
+        this.color = '#000000';
+        this.align = 'left';
+    }
+
+    setText(text) {
+        this.text = text;
+        if (this.element) {
+            this.element.textContent = text;
+        }
+    }
+
+    getText() {
+        return this.text;
+    }
+
+    setFontSize(size) {
+        this.fontSize = size;
+        if (this.element) {
+            this.element.style.fontSize = size;
+        }
+    }
+
+    setFontFamily(family) {
+        this.fontFamily = family;
+        if (this.element) {
+            this.element.style.fontFamily = family;
+        }
+    }
+
+    setColor(color) {
+        this.color = color;
+        if (this.element) {
+            this.element.style.color = color;
+        }
+    }
+
+    setAlign(align) {
+        this.align = align;
+        if (this.element) {
+            this.element.style.textAlign = align;
+        }
+    }
+
+    onDraw(container) {
+        if (!this.element) {
+            this.element = document.createElement('span');
+            this.element.textContent = this.text;
+            this.element.style.fontSize = this.fontSize;
+            this.element.style.fontFamily = this.fontFamily;
+            this.element.style.color = this.color;
+            this.element.style.textAlign = this.align;
+            this.element.style.display = 'inline-block';
+            this.element.style.boxSizing = 'border-box';
+
+            if (!this.parentElement) {
+                this.element.style.position = 'absolute';
+                this.element.style.left = this.x + 'px';
+                this.element.style.top = this.y + 'px';
+                this.element.style.width = this.width ? this.width + 'px' : 'auto';
+                this.element.style.height = this.height ? this.height + 'px' : 'auto';
+                this.element.style.zIndex = this.z;
+            }
+        }
+
+        if (container) {
+            container.appendChild(this.element);
+        }
+
         return this.element;
     }
 }

@@ -1,0 +1,13 @@
+{
+    "path": "/apps",
+    "apps": [
+        {
+            "name": "tetris",
+            "path": "/tetris"        
+        },
+        {
+            "name": "login",
+            "path": "/login"
+        }
+    ]
+}
