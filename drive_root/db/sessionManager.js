@@ -6,9 +6,9 @@ const Sequelize = require('sequelize');
 const sequelize = require('./sequelize_instance');
 const modelsDef = require('./db');
 
-// Динамически создаём модель Session (и User, если нужно)
-const sessionDef = modelsDef.find(m => m.name === 'Session');
-const userDef = modelsDef.find(m => m.name === 'User');
+// Динамически создаём модель Sessions (и Users, если нужно)
+const sessionDef = modelsDef.find(m => m.name === 'Sessions');
+const userDef = modelsDef.find(m => m.name === 'Users');
 
 const Session = sequelize.define(sessionDef.name, Object.fromEntries(
   Object.entries(sessionDef.fields).map(([k, v]) => [k, { ...v, type: Sequelize.DataTypes[v.type] }])
@@ -33,7 +33,7 @@ function parseCookies(cookieHeader) {
 
 async function getOrCreateSession(req, res) {
   const cookies = parseCookies(req.headers.cookie || '');
-  let sessionId = cookies.idSession;
+  let sessionId = cookies.sessionID;
   let session = null;
 
   // Проверяем кэш
@@ -59,7 +59,7 @@ async function getOrCreateSession(req, res) {
     session = await Session.create({ sessionId, userId: null, isGuest: true });
     sessionCache.set(sessionId, session);
     // Устанавливаем cookie
-    res.setHeader('Set-Cookie', `idSession=${sessionId}; Path=/; HttpOnly`);
+    res.setHeader('Set-Cookie', `sessionID=${sessionId}; Path=/; HttpOnly`);
   }
 
   return session;

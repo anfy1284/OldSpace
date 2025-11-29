@@ -1,6 +1,3 @@
-// createDB.js
-// Универсальный скрипт для создания структуры БД и наполнения начальными данными
-
 
 const Sequelize = require('sequelize');
 const fs = require('fs');
@@ -11,9 +8,7 @@ const modelsDef = require('./db');
 const defaultValues = require('./defaultValues');
 const { hashPassword } = require('./utilites');
 
-// Функция для проверки и создания базы
 async function ensureDatabase() {
-  // Подключаемся к postgres (или другой существующей БД)
   const adminClient = new Client({
     user: dbSettings.username,
     password: dbSettings.password,
@@ -22,7 +17,6 @@ async function ensureDatabase() {
     database: 'postgres',
   });
   await adminClient.connect();
-  // Проверяем наличие базы
   const dbName = dbSettings.database;
   const res = await adminClient.query('SELECT 1 FROM pg_database WHERE datname = $1', [dbName]);
   if (res.rowCount === 0) {
@@ -34,7 +28,6 @@ async function ensureDatabase() {
   await adminClient.end();
 }
 
-// Динамически создаём модели на основе структуры из db.js
 function getSequelizeInstance() {
   return new Sequelize(dbSettings.database, dbSettings.username, dbSettings.password, {
     host: dbSettings.host,
@@ -47,8 +40,8 @@ function getSequelizeInstance() {
 async function createAll() {
   await ensureDatabase();
   const sequelize = getSequelizeInstance();
+  // Генерируем модели
   const models = {};
-  // modelsDef теперь массив моделей
   for (const def of modelsDef) {
     const fields = {};
     for (const [field, opts] of Object.entries(def.fields)) {
@@ -58,20 +51,22 @@ async function createAll() {
     models[def.name] = sequelize.define(def.name, fields, { ...def.options, tableName: def.tableName });
   }
 
-  // Удаляем все таблицы перед созданием (drop all)
-  await sequelize.drop();
+  // Drop all tables (child first)
+  if (models.UserSystems) await models.UserSystems.drop({ cascade: true }).catch(()=>{});
+  if (models.Sessions) await models.Sessions.drop({ cascade: true }).catch(()=>{});
+  if (models.Users) await models.Users.drop({ cascade: true }).catch(()=>{});
+  // Add more drop order if needed
+
   await sequelize.sync({ force: true });
 
-  // Универсально добавляем данные из defaultValues, не удаляя существующие
+  // Наполнение начальными данными
   for (const [entity, records] of Object.entries(defaultValues)) {
-    // ищем модель по tableName
     const modelDef = modelsDef.find(m => m.tableName === entity);
     if (!modelDef) continue;
     const Model = models[modelDef.name];
     if (!Model) continue;
     for (const record of records) {
       let data = { ...record };
-      // Согласуем поля для users
       if (entity === 'users') {
         if (data.username) {
           data.name = data.username;
@@ -87,6 +82,16 @@ async function createAll() {
   }
   console.log('База данных пересоздана и заполнена начальными данными.');
   await sequelize.close();
+
+  // После успешного завершения — запуск инициализации drive_forms/db/createDB.js
+  const formsCreateDB = path.resolve(__dirname, '../../drive_forms/db/createDB.js');
+  if (fs.existsSync(formsCreateDB)) {
+    const { spawn } = require('child_process');
+    const child = spawn(process.execPath, [formsCreateDB], { stdio: 'inherit' });
+    child.on('exit', code => {
+      process.exit(code);
+    });
+  }
 }
 
 createAll().catch(e => {

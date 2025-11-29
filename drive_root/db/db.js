@@ -5,7 +5,7 @@
 
 const models = [
     {
-        name: 'User',
+        name: 'Users',
         tableName: 'users',
         fields: {
             id: {
@@ -15,7 +15,7 @@ const models = [
             },
             email: {
                 type: 'STRING',
-                allowNull: false,
+                allowNull: true,
                 unique: true,
                 validate: {
                     isEmail: true,
@@ -28,7 +28,12 @@ const models = [
             },            
             password_hash: {
                 type: 'STRING',
+                allowNull: true,
+            },
+            isGuest: {
+                type: 'BOOLEAN',
                 allowNull: false,
+                defaultValue: false,
             },
         },
         options: {
@@ -44,7 +49,7 @@ const models = [
         },
     },
     {
-        name: 'Session',
+        name: 'Sessions',
         tableName: 'sessions',
         fields: {
             id: {

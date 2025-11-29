@@ -1,3 +1,5 @@
+const formsGlobal = require('./globalServerContext');
+const globalRoot = require('../drive_root/globalServerContext');
 const fs = require('fs');
 const path = require('path');
 
@@ -61,7 +63,8 @@ function loadApp(name) {
 
 
 // Вспомогательная функция для динамического вызова метода приложения
-function invokeAppMethod(appName, methodName, params, callback) {
+// Вспомогательная функция для динамического вызова метода приложения
+function invokeAppMethod(appName, methodName, params, sessionID, callback) {
 	// Путь к серверному js-файлу приложения
 	const appEntry = appsConfig.apps.find(a => a.name === appName);
 	if (!appEntry) return callback(new Error('App not found'));
@@ -76,11 +79,10 @@ function invokeAppMethod(appName, methodName, params, callback) {
 		return callback(new Error('Failed to load app server.js: ' + e.message));
 	}
 	if (typeof appModule[methodName] !== 'function') return callback(new Error('Method not found in app'));
-	// Вызов функции с распаковкой параметров
+	// Вызов функции с sessionID отдельным параметром
 	try {
-		// params — объект, передаём как аргументы по имени
-		// Функция должна принимать один объект (params) или spread
-		const result = appModule[methodName](params);
+		// params — объект, sessionID — строка
+		const result = appModule[methodName](params, sessionID);
 		if (result && typeof result.then === 'function') {
 			// async/Promise
 			result.then(r => callback(null, r)).catch(e => callback(e));
@@ -94,10 +96,38 @@ function invokeAppMethod(appName, methodName, params, callback) {
 
 function handleRequest(req, res, appDir, appAlias) {
 	try {
-		const prefix = `/${appAlias}`;
+		let isAppLoad = false;
+
+		// --- Endpoint для получения клиентских скриптов доступных приложений ---
+		if ((req.method === 'POST' || req.method === 'GET') && req.url === `/${appAlias}/loadApps`) {
+			// Получаем пользователя по sessionID
+			let sessionID = null;
+			if (req.headers && req.headers.cookie) {
+				const match = req.headers.cookie.match(/(?:^|; )sessionID=([^;]+)/);
+				if (match) sessionID = decodeURIComponent(match[1]);
+			}
+			isAppLoad = true;
+			globalRoot.getUserBySessionID(sessionID).then(user => {
+				return formsGlobal.loadApps(user);
+			}).then(result => {
+				if (req.method === 'GET') {
+					// Склеенный JS-код
+					res.writeHead(200, { 'Content-Type': 'application/javascript' });
+					res.end(result);
+				} else {
+					// Старый вариант — JSON
+					res.writeHead(200, { 'Content-Type': 'application/json' });
+					res.end(JSON.stringify({ result }));
+				}
+			}).catch(e => {
+				res.writeHead(500, { 'Content-Type': req.method === 'GET' ? 'text/javascript' : 'application/json' });
+				res.end(req.method === 'GET' ? ('/* error: ' + e.message.replace(/\*\//g, '') + ' */') : JSON.stringify({ error: e.message }));
+			});
+			return;
+		}
 
 		// --- Новый endpoint для вызова метода приложения ---
-		if (req.method === 'POST' && req.url === `${prefix}/call`) {
+		if (req.method === 'POST' && req.url === `/${appAlias}/call`) {
 			let body = '';
 			req.on('data', chunk => { body += chunk; });
 			req.on('end', () => {
@@ -115,7 +145,14 @@ function handleRequest(req, res, appDir, appAlias) {
 					res.end(JSON.stringify({ error: 'Missing app or method' }));
 					return;
 				}
-				invokeAppMethod(app, method, params || {}, (err, result) => {
+				// Извлекаем sessionID из cookie
+				let sessionID = null;
+				if (req.headers && req.headers.cookie) {
+					const match = req.headers.cookie.match(/(?:^|; )sessionID=([^;]+)/);
+					if (match) sessionID = decodeURIComponent(match[1]);
+				}
+				// Передаём sessionID отдельным параметром
+				invokeAppMethod(app, method, params || {}, sessionID, (err, result) => {
 					if (err) {
 						res.writeHead(500, { 'Content-Type': 'application/json' });
 						res.end(JSON.stringify({ error: err.message }));
@@ -130,8 +167,8 @@ function handleRequest(req, res, appDir, appAlias) {
 
 		// --- Обычная обработка статики ---
 		let rel = '';
-		let isAppLoad = false;
 
+		const prefix = `/${appAlias}`;
 		if (req.url === prefix || req.url === `${prefix}/`) {
 			rel = 'index.html';
 		} else if (req.url.startsWith(`${prefix}/apps/`)) {
@@ -151,35 +188,36 @@ function handleRequest(req, res, appDir, appAlias) {
 			return;
 		}
 
-		// Разрешены только файлы из белого списка
-		if (!ALLOWED.has(rel) && !isAppLoad) {
-			res.writeHead(403, { 'Content-Type': 'text/plain' });
-			res.end('Forbidden');
-			return;
-		}
-
-		let filePath = safeJoin(appDir, rel);
-        
-		if (!filePath) {
-			res.writeHead(400, { 'Content-Type': 'text/plain' });
-			res.end('Bad request');
-			return;
-		}
-
-		fs.readFile(filePath, (err, data) => {
-			if (err) {
-				res.writeHead(404, { 'Content-Type': 'text/plain' });
-				res.end('Not Found');
+		// Разрешены только файлы из белого списка (только для статики)
+		if (rel) {
+			if (!ALLOWED.has(rel) && !isAppLoad) {
+				res.writeHead(403, { 'Content-Type': 'text/plain' });
+				res.end('Forbidden');
 				return;
 			}
 
-			const headers = {
-				'Content-Type': getContentType(rel),
-				'Content-Security-Policy': "default-src 'self'",
-			};
-			res.writeHead(200, headers);
-			res.end(data);
-		});
+			let filePath = safeJoin(appDir, rel);
+			if (!filePath) {
+				res.writeHead(400, { 'Content-Type': 'text/plain' });
+				res.end('Bad request');
+				return;
+			}
+
+			fs.readFile(filePath, (err, data) => {
+				if (err) {
+					res.writeHead(404, { 'Content-Type': 'text/plain' });
+					res.end('Not Found');
+					return;
+				}
+
+				const headers = {
+					'Content-Type': getContentType(rel),
+					'Content-Security-Policy': "default-src 'self'",
+				};
+				res.writeHead(200, headers);
+				res.end(data);
+			});
+		}
 	} catch (e) {
 		console.error('[drive_forms] handleRequest error:', e);
 		res.writeHead(500, { 'Content-Type': 'text/plain' });

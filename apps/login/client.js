@@ -60,13 +60,22 @@ loginForm.onDraw = function (parent) {
                 loginForm.txtUsername.setText(result);
             })
             .catch(err => {
-                loginForm.txtUsername.setText('Ошибка: ' + err.message);
+                console.error('Ошибка:', err);
             });
     };
 
     this.btnGuest = new Button(this.contentArea);
     this.btnGuest.setCaption('Login as Guest');
     this.btnGuest.onDraw(this.contentArea);
+    this.btnGuest.onClick = function () {
+        callServerMethod('login', 'loginAsGuest', {})
+            .then(result => {
+                location.reload();
+            })
+            .catch(err => {
+                console.error('Ошибка: ' + err.message);
+            });
+    };
 
     setTimeout(() => {
         this.reDraw();

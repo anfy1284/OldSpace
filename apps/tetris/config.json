@@ -1,0 +1,5 @@
+{
+    "system": ["mySpace"],
+    "access": ["admin", "public"],
+    "dependencies": {}
+}

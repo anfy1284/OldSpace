@@ -1075,6 +1075,13 @@ class Label extends UIObject {
         }
     }
 
+    setFontWeight(weight) {
+        this.fontWeight = weight;
+        if (this.element) {
+            this.element.style.fontWeight = weight;
+        }
+    }
+
     setFontFamily(family) {
         this.fontFamily = family;
         if (this.element) {

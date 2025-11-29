@@ -8,6 +8,15 @@
         {
             "name": "login",
             "path": "/login"
+        },
+        {
+            "name": "calculator",
+            "path": "/calculator"
+        },
+        {
+            "name": "messenger",
+            "path": "/messenger"
         }
+
     ]
 }
