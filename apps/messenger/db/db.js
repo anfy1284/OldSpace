@@ -78,7 +78,118 @@ const models = [
         options: {
             timestamps: true,
         },
+    },
+    {
+        name: 'Messenger_ChatMembers',
+        tableName: 'Messenger_ChatMembers',
+        fields: {
+            id: {
+                type: 'INTEGER',
+                primaryKey: true,
+                autoIncrement: true,
+            },
+            chatId: {
+                type: 'INTEGER',
+                allowNull: false,
+                references: {
+                    model: 'Messenger_Chats',
+                    key: 'id',
+                },
+            },
+            userId: {
+                type: 'INTEGER',
+                allowNull: false,
+                references: {
+                    model: 'users',
+                    key: 'id',
+                },
+            },
+            role: {
+                type: 'STRING',
+                allowNull: false,
+                defaultValue: 'member', // member, admin, owner
+            },
+            customName: {
+                type: 'STRING',
+                allowNull: true, // Персональное название чата для этого пользователя
+            },
+            joinedAt: {
+                type: 'DATE',
+                allowNull: false,
+            },
+            isActive: {
+                type: 'BOOLEAN',
+                allowNull: false,
+                defaultValue: true,
+            },
+        },
+        options: {
+            timestamps: true,
+            indexes: [
+                {
+                    unique: true,
+                    fields: ['chatId', 'userId']
+                }
+            ]
+        },
     }
 ];
 
-module.exports = models;
+const associations = [
+    {
+        source: 'Messenger_Chats',
+        target: 'Messenger_ChatMembers',
+        type: 'hasMany',
+        options: {
+            foreignKey: 'chatId',
+            as: 'members'
+        }
+    },
+    {
+        source: 'Messenger_ChatMembers',
+        target: 'Messenger_Chats',
+        type: 'belongsTo',
+        options: {
+            foreignKey: 'chatId',
+            as: 'chat'
+        }
+    },
+    {
+        source: 'Messenger_Chats',
+        target: 'Messenger_Messages',
+        type: 'hasMany',
+        options: {
+            foreignKey: 'chatId',
+            as: 'messages'
+        }
+    },
+    {
+        source: 'Messenger_Messages',
+        target: 'Messenger_Chats',
+        type: 'belongsTo',
+        options: {
+            foreignKey: 'chatId',
+            as: 'chat'
+        }
+    },
+    {
+        source: 'Messenger_ChatMembers',
+        target: 'Users',
+        type: 'belongsTo',
+        options: {
+            foreignKey: 'userId',
+            as: 'user'
+        }
+    },
+    {
+        source: 'Messenger_Messages',
+        target: 'Users',
+        type: 'belongsTo',
+        options: {
+            foreignKey: 'userId',
+            as: 'author'
+        }
+    }
+];
+
+module.exports = { models, associations };

@@ -66,7 +66,28 @@ function checkProtectedAccess(sessionId, filePath) {
 }
 
 async function handleRequest(req, res) {
+    console.log('[drive_root] Request:', req.method, req.url);
     await getOrCreateSession(req, res);
+
+    // Обработка favicon
+    if (req.url === '/favicon.ico' || req.url === '/favicon.svg') {
+        const faviconPath = path.join(__dirname, 'resources', 'public', 'favicon.svg');
+        if (fs.existsSync(faviconPath)) {
+            fs.readFile(faviconPath, (err, data) => {
+                if (err) {
+                    res.writeHead(404);
+                    res.end();
+                    return;
+                }
+                res.writeHead(200, { 'Content-Type': 'image/svg+xml' });
+                res.end(data);
+            });
+        } else {
+            res.writeHead(204);
+            res.end();
+        }
+        return;
+    }
 
     // Универсальная отдача ресурсов: /res/public/..., /res/protected/...
     if (req.url.startsWith('/res/')) {
@@ -141,7 +162,7 @@ async function handleRequest(req, res) {
             }
             res.writeHead(200, {
                 'Content-Type': 'text/html; charset=utf-8',
-                'Content-Security-Policy': "default-src 'self'"
+                'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
             });
             res.end(data);
         });

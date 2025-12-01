@@ -13,6 +13,14 @@ const models = [
                 primaryKey: true,
                 autoIncrement: true,
             },
+            level: {
+                type: 'STRING',
+                allowNull: false,
+            },
+            defaultValueId: {
+                type: 'INTEGER',
+                allowNull: false,
+            },
             tableName: {
                 type: 'STRING',
                 allowNull: false,
@@ -24,6 +32,12 @@ const models = [
         },
         options: {
             timestamps: true,
+            indexes: [
+                {
+                    unique: true,
+                    fields: ['level', 'defaultValueId', 'tableName']
+                }
+            ]
         },
     },
     {
@@ -106,4 +120,7 @@ const models = [
     },
 ];
 
+const DEFAULT_VALUES_TABLE = 'default_values';
+
 module.exports = models;
+module.exports.DEFAULT_VALUES_TABLE = DEFAULT_VALUES_TABLE;

@@ -1,4 +1,5 @@
 {
+    "level": "app",
     "system": ["mySpace"],
     "access": ["nologged"],
     "dependencies": {}

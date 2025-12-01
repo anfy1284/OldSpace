@@ -1,4 +1,5 @@
 {
+  "level": "root",
   "appDir": "drive_forms",
   "appAlias": "app",
   "appIndexPage": "resources/public/index.html",

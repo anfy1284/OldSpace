@@ -43,7 +43,7 @@ function loadApp(name) {
 
 // Вспомогательная функция для динамического вызова метода приложения
 // Вспомогательная функция для динамического вызова метода приложения
-function invokeAppMethod(appName, methodName, params, sessionID, callback) {
+function invokeAppMethod(appName, methodName, params, sessionID, callback, req, res) {
 	// Путь к серверному js-файлу приложения
 	const appEntry = appsConfig.apps.find(a => a.name === appName);
 	if (!appEntry) return callback(new Error('App not found'));
@@ -60,8 +60,8 @@ function invokeAppMethod(appName, methodName, params, sessionID, callback) {
 	if (typeof appModule[methodName] !== 'function') return callback(new Error('Method not found in app'));
 	// Вызов функции с sessionID отдельным параметром
 	try {
-		// params — объект, sessionID — строка
-		const result = appModule[methodName](params, sessionID);
+		// params — объект, sessionID — строка, req, res — для SSE
+		const result = appModule[methodName](params, sessionID, req, res);
 		if (result && typeof result.then === 'function') {
 			// async/Promise
 			result.then(r => callback(null, r)).catch(e => callback(e));
@@ -75,7 +75,56 @@ function invokeAppMethod(appName, methodName, params, sessionID, callback) {
 
 function handleRequest(req, res, appDir, appAlias) {
 	// Обработка ресурсов и API-эндпоинтов
+	console.log('[drive_forms/handleRequest] Request:', req.method, req.url, 'appAlias:', appAlias);
 	try {
+		// --- Endpoint для GET-запросов с параметрами (для SSE) - ПРОВЕРЯЕМ ПЕРВЫМ ---
+		if (req.method === 'GET' && req.url.startsWith(`/${appAlias}/`) && !req.url.startsWith(`/${appAlias}/res/`) && req.url !== `/${appAlias}/loadApps`) {
+			const urlObj = new URL(req.url, `http://${req.headers.host}`);
+			const pathParts = urlObj.pathname.split('/').filter(Boolean);
+			
+			console.log('[drive_forms] GET request:', req.url, 'pathParts:', pathParts);
+			
+			// Формат: /{appAlias}/{appName}/{methodName}?params
+			// pathParts будет ['appAlias', 'appName', 'methodName']
+			if (pathParts.length >= 3 && pathParts[0] === appAlias) {
+				const appName = pathParts[1];
+				const methodName = pathParts[2];
+				
+				console.log('[drive_forms] Invoking:', appName, methodName);
+				
+				// Извлекаем параметры из query string
+				const params = {};
+				urlObj.searchParams.forEach((value, key) => {
+					params[key] = value;
+				});
+				
+				// Извлекаем sessionID из cookie
+				let sessionID = null;
+				if (req.headers && req.headers.cookie) {
+					const match = req.headers.cookie.match(/(?:^|; )sessionID=([^;]+)/);
+					if (match) sessionID = decodeURIComponent(match[1]);
+				}
+				
+				invokeAppMethod(appName, methodName, params, sessionID, (err, result) => {
+					if (err) {
+						console.error('[drive_forms] Error invoking method:', err.message);
+						res.writeHead(500, { 'Content-Type': 'application/json' });
+						res.end(JSON.stringify({ error: err.message }));
+					} else {
+						// Проверяем, не обработан ли запрос внутри метода (SSE, etc)
+						if (result && (result._sse || result._handled)) {
+							// Соединение уже обработано внутри метода, не закрываем
+							console.log('[drive_forms] Request handled by app method');
+							return;
+						}
+						res.writeHead(200, { 'Content-Type': 'application/json' });
+						res.end(JSON.stringify({ result }));
+					}
+				}, req, res);
+				return;
+			}
+		}
+		
 		// Универсальная отдача ресурсов: /<appAlias>/res/public/..., /<appAlias>/res/protected/...
 		if (req.url.startsWith(`/${appAlias}/res/`)) {
 			const parts = req.url.split('/').filter(Boolean); // ['', appAlias, 'res', 'public', ...] => ['appAlias', 'res', 'public', ...]
@@ -164,7 +213,7 @@ function handleRequest(req, res, appDir, appAlias) {
 			return;
 		}
 
-		// --- Новый endpoint для вызова метода приложения ---
+		// --- Endpoint для вызова метода приложения через POST ---
 		if (req.method === 'POST' && req.url === `/${appAlias}/call`) {
 			let body = '';
 			req.on('data', chunk => { body += chunk; });
@@ -197,7 +246,7 @@ function handleRequest(req, res, appDir, appAlias) {
 						res.writeHead(200, { 'Content-Type': 'application/json' });
 						res.end(JSON.stringify({ result }));
 					}
-				});
+				}, req, res);
 			});
 			return;
 		}

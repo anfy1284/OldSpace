@@ -1,6 +1,7 @@
 // Глобальный серверный контекст
 const global = require('../../drive_root/globalServerContext');
 const formsGlobal = require('../../drive_forms/globalServerContext');
+const rootGlobal = require('../../drive_root/globalServerContext');
 
 // Серверная функция для теста связи
 async function testConnection(params, sessionID) {
@@ -15,7 +16,7 @@ async function testConnection(params, sessionID) {
 
 // логиним как гостя
 async function loginAsGuest(params, sessionID) {
-	const guestUser = await formsGlobal.createGuestUser(sessionID, ['mySpace'], ['public']);
+	const guestUser = await rootGlobal.createGuestUser(sessionID, ['mySpace'], ['public']);
 }
 
 module.exports = { testConnection, loginAsGuest };
