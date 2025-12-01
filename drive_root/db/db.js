@@ -5,6 +5,28 @@
 
 const models = [
     {
+        name: 'DefaultValues',
+        tableName: 'default_values',
+        fields: {
+            id: {
+                type: 'INTEGER',
+                primaryKey: true,
+                autoIncrement: true,
+            },
+            tableName: {
+                type: 'STRING',
+                allowNull: false,
+            },
+            recordId: {
+                type: 'INTEGER',
+                allowNull: false,
+            },
+        },
+        options: {
+            timestamps: true,
+        },
+    },
+    {
         name: 'Users',
         tableName: 'users',
         fields: {

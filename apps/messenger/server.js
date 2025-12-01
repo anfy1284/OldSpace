@@ -17,9 +17,8 @@ eventBus.on('userCreated', async (user, { systems, roles, sessionID }) => {
 });
 
 function onLoad(params, sessionID) {
-    let s = 123;
-    s += 1;
-    //const guestUser = await formsGlobal.createGuestUser(sessionID, ['mySpace'], ['public']);
+                
+
 }
 
 module.exports = { onLoad };

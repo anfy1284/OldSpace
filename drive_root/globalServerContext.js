@@ -59,8 +59,29 @@ function helloFromGlobal(name) {
     return `Hello, ${name}! (from globalServerContext)`;
 }
 
-// Здесь можно экспортировать любые функции, объекты, константы
-
+// Универсальная функция определения Content-Type для файлов
+function getContentType(fileName) {
+    const ext = require('path').extname(fileName).toLowerCase();
+    switch (ext) {
+        case '.html':
+            return 'text/html; charset=utf-8';
+        case '.js':
+            return 'application/javascript; charset=utf-8';
+        case '.css':
+            return 'text/css; charset=utf-8';
+        case '.json':
+            return 'application/json; charset=utf-8';
+        case '.png':
+            return 'image/png';
+        case '.jpg':
+        case '.jpeg':
+            return 'image/jpeg';
+        case '.svg':
+            return 'image/svg+xml';
+        default:
+            return 'application/octet-stream';
+    }
+}
 
 // Получить пользователя по sessionID (асинхронно)
 const modelsDef = require('./db/db');
@@ -81,9 +102,10 @@ async function getUserBySessionID(sessionID) {
 }
 
 module.exports = {
-        getServerTime,
-        helloFromGlobal,
-        getUserBySessionID,
-        modelsDB,
-        initModelsDB,
+    getServerTime,
+    helloFromGlobal,
+    getUserBySessionID,
+    modelsDB,
+    initModelsDB,
+    getContentType,
 };

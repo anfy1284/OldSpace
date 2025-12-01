@@ -1,3 +1,4 @@
+// Используем функцию getContentType из глобального контекста через globalRoot
 const formsGlobal = require('./globalServerContext');
 const globalRoot = require('../drive_root/globalServerContext');
 const fs = require('fs');
@@ -23,28 +24,6 @@ try {
 
 const ALLOWED = new Set(appConfig.publicFiles || []);
 
-function getContentType(fileName) {
-	const ext = path.extname(fileName).toLowerCase();
-	switch (ext) {
-		case '.html':
-			return 'text/html; charset=utf-8';
-		case '.js':
-			return 'application/javascript; charset=utf-8';
-		case '.css':
-			return 'text/css; charset=utf-8';
-		case '.json':
-			return 'application/json; charset=utf-8';
-		case '.png':
-			return 'image/png';
-		case '.jpg':
-		case '.jpeg':
-			return 'image/jpeg';
-		case '.svg':
-			return 'image/svg+xml';
-		default:
-			return 'application/octet-stream';
-	}
-}
 
 function safeJoin(baseDir, relativePath) {
 	const norm = path.normalize(relativePath).replace(/^[/\\]+/, '');
@@ -56,7 +35,7 @@ function safeJoin(baseDir, relativePath) {
 function loadApp(name) {
 	const app = appsConfig.apps.find(a => a.name === name);
 	if (app && app.path) {
-		return path.join(app.path, 'client.js');
+		return path.join(app.path, 'resources', 'public', 'client.js');
 	}
 	return null;
 }
@@ -95,9 +74,71 @@ function invokeAppMethod(appName, methodName, params, sessionID, callback) {
 }
 
 function handleRequest(req, res, appDir, appAlias) {
+	// Обработка ресурсов и API-эндпоинтов
 	try {
-		let isAppLoad = false;
-
+		// Универсальная отдача ресурсов: /<appAlias>/res/public/..., /<appAlias>/res/protected/...
+		if (req.url.startsWith(`/${appAlias}/res/`)) {
+			const parts = req.url.split('/').filter(Boolean); // ['', appAlias, 'res', 'public', ...] => ['appAlias', 'res', 'public', ...]
+			if (parts.length >= 4) {
+				const resType = parts[2]; // public или protected
+				const relPath = parts.slice(3).join(path.sep);
+				let filePath;
+				if (resType === 'public') {
+					filePath = path.join(__dirname, 'resources', 'public', relPath);
+					if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+						res.writeHead(404, { 'Content-Type': 'text/plain' });
+						res.end('404 Not Found');
+						return;
+					}
+					const contentType = globalRoot.getContentType(filePath);
+					fs.readFile(filePath, (err, data) => {
+						if (err) {
+							res.writeHead(500, { 'Content-Type': 'text/plain' });
+							res.end('Error reading file');
+							return;
+						}
+						res.writeHead(200, { 'Content-Type': contentType });
+						res.end(data);
+					});
+					return;
+				} else if (resType === 'protected') {
+					filePath = path.join(__dirname, 'resources', 'protected', relPath);
+					if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+						res.writeHead(404, { 'Content-Type': 'text/plain' });
+						res.end('404 Not Found');
+						return;
+					}
+					// Проверка доступа по sessionID (заглушка)
+					let sessionID = null;
+					if (req.headers && req.headers.cookie) {
+						const match = req.headers.cookie.match(/(?:^|; )sessionID=([^;]+)/);
+						if (match) sessionID = decodeURIComponent(match[1]);
+					}
+					// TODO: реализовать реальную проверку доступа
+					// Сейчас доступ всегда запрещён
+					const checkProtectedAccess = (sessionId, filePath) => false;
+					if (!checkProtectedAccess(sessionID, filePath)) {
+						res.writeHead(403, { 'Content-Type': 'text/plain' });
+						res.end('Forbidden');
+						return;
+					}
+					const contentType = globalRoot.getContentType(filePath);
+					fs.readFile(filePath, (err, data) => {
+						if (err) {
+							res.writeHead(500, { 'Content-Type': 'text/plain' });
+							res.end('Error reading file');
+							return;
+						}
+						res.writeHead(200, { 'Content-Type': contentType });
+						res.end(data);
+					});
+					return;
+				}
+			}
+			res.writeHead(404, { 'Content-Type': 'text/plain' });
+			res.end('404 Not Found');
+			return;
+		}
 		// --- Endpoint для получения клиентских скриптов доступных приложений ---
 		if ((req.method === 'POST' || req.method === 'GET') && req.url === `/${appAlias}/loadApps`) {
 			// Получаем пользователя по sessionID
@@ -106,16 +147,13 @@ function handleRequest(req, res, appDir, appAlias) {
 				const match = req.headers.cookie.match(/(?:^|; )sessionID=([^;]+)/);
 				if (match) sessionID = decodeURIComponent(match[1]);
 			}
-			isAppLoad = true;
 			globalRoot.getUserBySessionID(sessionID).then(user => {
 				return formsGlobal.loadApps(user);
 			}).then(result => {
 				if (req.method === 'GET') {
-					// Склеенный JS-код
 					res.writeHead(200, { 'Content-Type': 'application/javascript' });
 					res.end(result);
 				} else {
-					// Старый вариант — JSON
 					res.writeHead(200, { 'Content-Type': 'application/json' });
 					res.end(JSON.stringify({ result }));
 				}
@@ -151,7 +189,6 @@ function handleRequest(req, res, appDir, appAlias) {
 					const match = req.headers.cookie.match(/(?:^|; )sessionID=([^;]+)/);
 					if (match) sessionID = decodeURIComponent(match[1]);
 				}
-				// Передаём sessionID отдельным параметром
 				invokeAppMethod(app, method, params || {}, sessionID, (err, result) => {
 					if (err) {
 						res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -165,59 +202,9 @@ function handleRequest(req, res, appDir, appAlias) {
 			return;
 		}
 
-		// --- Обычная обработка статики ---
-		let rel = '';
-
-		const prefix = `/${appAlias}`;
-		if (req.url === prefix || req.url === `${prefix}/`) {
-			rel = 'index.html';
-		} else if (req.url.startsWith(`${prefix}/apps/`)) {
-			let appName = req.url.slice((`${prefix}/apps/`).length);
-			const app = loadApp(appName);
-			if (app) {
-				rel = app;
-				isAppLoad = true;
-				appDir = path.join(__dirname, '..', appsConfig.path);
-			}
-		} else if (req.url.startsWith(`${prefix}/`)) {
-			rel = decodeURIComponent(req.url.slice(prefix.length + 1));
-			if (!rel) rel = 'index.html';
-		} else {
-			res.writeHead(404, { 'Content-Type': 'text/plain' });
-			res.end('Not Found');
-			return;
-		}
-
-		// Разрешены только файлы из белого списка (только для статики)
-		if (rel) {
-			if (!ALLOWED.has(rel) && !isAppLoad) {
-				res.writeHead(403, { 'Content-Type': 'text/plain' });
-				res.end('Forbidden');
-				return;
-			}
-
-			let filePath = safeJoin(appDir, rel);
-			if (!filePath) {
-				res.writeHead(400, { 'Content-Type': 'text/plain' });
-				res.end('Bad request');
-				return;
-			}
-
-			fs.readFile(filePath, (err, data) => {
-				if (err) {
-					res.writeHead(404, { 'Content-Type': 'text/plain' });
-					res.end('Not Found');
-					return;
-				}
-
-				const headers = {
-					'Content-Type': getContentType(rel),
-					'Content-Security-Policy': "default-src 'self'",
-				};
-				res.writeHead(200, headers);
-				res.end(data);
-			});
-		}
+		// Всё остальное — 404
+		res.writeHead(404, { 'Content-Type': 'text/plain' });
+		res.end('Not Found');
 	} catch (e) {
 		console.error('[drive_forms] handleRequest error:', e);
 		res.writeHead(500, { 'Content-Type': 'text/plain' });

@@ -1,3 +1,5 @@
+// Получаем функцию getContentType из глобального контекста
+const { getContentType } = require('./globalServerContext');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -57,8 +59,79 @@ try {
     process.exit(1);
 }
 
-async function handleApiRequest(req, res) {
+// Проверка доступа к защищённым ресурсам (заглушка)
+function checkProtectedAccess(sessionId, filePath) {
+    // TODO: реализовать реальную проверку доступа по sessionId и filePath
+    return false;
+}
+
+async function handleRequest(req, res) {
     await getOrCreateSession(req, res);
+
+    // Универсальная отдача ресурсов: /res/public/..., /res/protected/...
+    if (req.url.startsWith('/res/')) {
+        const parts = req.url.split('/').filter(Boolean); // ['', 'res', 'public', ...] => ['res', 'public', ...]
+        if (parts.length >= 3) {
+            const resType = parts[1]; // public или protected
+            const relPath = parts.slice(2).join(path.sep);
+            let filePath;
+            if (resType === 'public') {
+                filePath = path.join(__dirname, 'resources', 'public', relPath);
+                if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+                    res.writeHead(404, { 'Content-Type': 'text/plain' });
+                    res.end('404 Not Found');
+                    return;
+                }
+                // Отдаём файл без проверки
+                const contentType = getContentType(filePath);
+                fs.readFile(filePath, (err, data) => {
+                    if (err) {
+                        res.writeHead(500, { 'Content-Type': 'text/plain' });
+                        res.end('Error reading file');
+                        return;
+                    }
+                    res.writeHead(200, { 'Content-Type': contentType });
+                    res.end(data);
+                });
+                return;
+            } else if (resType === 'protected') {
+                filePath = path.join(__dirname, 'resources', 'protected', relPath);
+                if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+                    res.writeHead(404, { 'Content-Type': 'text/plain' });
+                    res.end('404 Not Found');
+                    return;
+                }
+                // Проверка доступа по sessionId (из cookie)
+                let sessionId = null;
+                if (req.headers && req.headers.cookie) {
+                    const match = req.headers.cookie.match(/(?:^|; )sessionId=([^;]+)/i);
+                    if (match) sessionId = decodeURIComponent(match[1]);
+                }
+                if (!checkProtectedAccess(sessionId, filePath)) {
+                    res.writeHead(403, { 'Content-Type': 'text/plain' });
+                    res.end('Forbidden');
+                    return;
+                }
+                // Отдаём файл
+                const contentType = getContentType(filePath);
+                fs.readFile(filePath, (err, data) => {
+                    if (err) {
+                        res.writeHead(500, { 'Content-Type': 'text/plain' });
+                        res.end('Error reading file');
+                        return;
+                    }
+                    res.writeHead(200, { 'Content-Type': contentType });
+                    res.end(data);
+                });
+                return;
+            }
+        }
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('404 Not Found');
+        return;
+    }
+
+    // ...остальная логика...
     if (req.url === '/') {
         fs.readFile(path.join(appDir, config.appIndexPage), 'utf8', (err, data) => {
             if (err) {
@@ -68,19 +141,6 @@ async function handleApiRequest(req, res) {
             }
             res.writeHead(200, {
                 'Content-Type': 'text/html; charset=utf-8',
-                'Content-Security-Policy': "default-src 'self'"
-            });
-            res.end(data);
-        });
-    } else if (req.url === '/client.js') {
-        fs.readFile(path.join(__dirname, 'client.js'), 'utf8', (err, data) => {
-            if (err) {
-                res.writeHead(404, { 'Content-Type': 'text/plain' });
-                res.end('404 Not Found');
-                return;
-            }
-            res.writeHead(200, {
-                'Content-Type': 'application/javascript; charset=utf-8',
                 'Content-Security-Policy': "default-src 'self'"
             });
             res.end(data);
@@ -108,7 +168,7 @@ async function handleApiRequest(req, res) {
 
 function createServer() {
     const server = http.createServer((req, res) => {
-        handleApiRequest(req, res).catch(e => {
+        handleRequest(req, res).catch(e => {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'Internal Server Error', details: e.message }));
         });
