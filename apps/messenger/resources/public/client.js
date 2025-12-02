@@ -265,8 +265,12 @@ formMessenger.onDraw = function(parent) {
 	Form.prototype.onDraw.call(this, parent);
 	
 	// Создаём таблицу с видимыми границами для отладки
+	const contentArea = this.getContentArea();
+	contentArea.style.height = '100%';
+	contentArea.style.overflow = 'hidden'; // Запрещаем скролл всего окна
+	
 	const table = document.createElement('table');
-	this.getContentArea().appendChild(table);
+	contentArea.appendChild(table);
 	table.style.width = '100%';
 	table.style.height = '100%';
 	table.style.borderCollapse = 'collapse';
@@ -275,6 +279,7 @@ formMessenger.onDraw = function(parent) {
 
 	// Одна строка, два столбца (левый 1/4, правый 3/4)
 	const row = document.createElement('tr');
+	row.style.height = '100%';
 	table.appendChild(row);
 
 
@@ -328,38 +333,38 @@ formMessenger.onDraw = function(parent) {
 	rightCell.style.width = '75%';
 	rightCell.style.border = '1px solid black';
 	rightCell.style.verticalAlign = 'top';
+	rightCell.style.height = '100%';
+	rightCell.style.position = 'relative';
 	row.appendChild(rightCell);
 
-	// Вложенная таблица в правом столбце
-	const rightTable = document.createElement('table');
-	rightTable.style.width = '100%';
-	rightTable.style.height = '100%';
-	rightTable.style.borderCollapse = 'collapse';
-	rightTable.style.tableLayout = 'fixed';
-	rightTable.style.border = '1px solid black';
-	rightCell.appendChild(rightTable);
+	// Используем flexbox для правого столбца с абсолютным позиционированием
+	rightCell.style.padding = '0';
+	const rightFlex = document.createElement('div');
+	rightFlex.style.position = 'absolute';
+	rightFlex.style.top = '0';
+	rightFlex.style.left = '0';
+	rightFlex.style.right = '0';
+	rightFlex.style.bottom = '0';
+	rightFlex.style.display = 'flex';
+	rightFlex.style.flexDirection = 'column';
+	rightCell.appendChild(rightFlex);
 
-	// Верхняя ячейка (всё кроме 30px) — область сообщений
-	const rightRowTop = document.createElement('tr');
-	rightTable.appendChild(rightRowTop);
-	const rightCellTop = document.createElement('td');
-	rightCellTop.style.border = '1px solid black';
-	rightCellTop.style.height = 'calc(100% - 30px)';
-	rightCellTop.style.overflow = 'auto';
-	rightCellTop.style.verticalAlign = 'top';
-	rightCellTop.style.padding = '8px';
-	rightRowTop.appendChild(rightCellTop);
+	// Верхняя часть (область сообщений) - растягивается
+	const messagesWrapper = document.createElement('div');
+	messagesWrapper.style.flex = '1';
+	messagesWrapper.style.overflow = 'auto';
+	messagesWrapper.style.padding = '8px';
+	messagesWrapper.style.borderBottom = '1px solid black';
+	rightFlex.appendChild(messagesWrapper);
 	
 	// Сохраняем ссылку на область сообщений
-	this.messagesContainer = rightCellTop;
+	this.messagesContainer = messagesWrapper;
 
-	// Нижняя ячейка (30px) — область ввода
-	const rightRowBottom = document.createElement('tr');
-	rightTable.appendChild(rightRowBottom);
-	const rightCellBottom = document.createElement('td');
-	rightCellBottom.style.border = '1px solid black';
-	rightCellBottom.style.height = '30px';
-	rightRowBottom.appendChild(rightCellBottom);
+	// Нижняя часть (область ввода) - фиксированная высота
+	const rightCellBottom = document.createElement('div');
+	rightCellBottom.style.height = '40px';
+	rightCellBottom.style.flexShrink = '0';
+	rightFlex.appendChild(rightCellBottom);
 	
 	// Сохраняем ссылку на область ввода
 	this.inputContainer = rightCellBottom;
