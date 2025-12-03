@@ -46,6 +46,9 @@ formTetris.dropHoldCount = 0; // Счетчик удержания клавиш�
 formTetris.allowDownPress = true;
 formTetris.cheatMode = false;
 
+// Флаг паузы
+formTetris.isPaused = false;
+
 // Генератор цветов
 formTetris.colors = ['#00FFFF', '#0000FF', '#FFA500', '#FFFF00', '#00FF00', '#800080', '#FF0000'];
 
@@ -56,7 +59,7 @@ formTetris.getNextColor = function() {
 }
 
 formTetris.onKeyPressed = function(keyEvent) {
-	if (this.isGameOver) return;
+	if (this.isGameOver || this.isPaused) return;
 	const key = keyEvent.key;
 	if (["ArrowLeft", "ArrowRight", "ArrowDown", "ArrowUp"].includes(key)) {
 		keyEvent.preventDefault();
@@ -76,6 +79,7 @@ formTetris.onKeyPressed = function(keyEvent) {
 }
 
 formTetris.onKeyReleased = function(keyEvent) {
+	if (this.isPaused) return;
 	const key = keyEvent.key;
 	if (["ArrowLeft", "ArrowRight", "ArrowDown", "ArrowUp"].includes(key)) {
 		this.keysPressed[key] = false;
@@ -94,24 +98,20 @@ formTetris.onKeyReleased = function(keyEvent) {
 }
 
 formTetris.processKeyActions = function() {
-	if (this.isGameOver) return;
-	
+	if (this.isGameOver || this.isPaused) return;
 	// Обрабатываем вращение
 	if (this.keysPressed['ArrowUp']) {
 		this.rotateFigure();
 		this.keysPressed['ArrowUp'] = false; // Вращение однократное при нажатии
 	}
-	
 	// Обрабатываем движение влево
 	if (this.keysPressed['ArrowLeft']) {
 		this.moveFigureLeft();
 	}
-	
 	// Обрабатываем движение вправо
 	if (this.keysPressed['ArrowRight']) {
 		this.moveFigureRight();
 	}
-	
 	// Обрабатываем движение вниз
 	if (this.keysPressed['ArrowDown']) {
 		// Первые два шага обычные
@@ -404,15 +404,22 @@ formTetris.onDraw = function(parent) {
 	this.pauseButton.setParent(controlsDiv);
 	this.pauseButton.onDraw(controlsDiv);
 	this.pauseButton.onClick = () => {
-		if (this.gameInterval){
-			clearInterval(this.gameInterval);
-			this.gameInterval = null;
+		if (!this.isPaused) {
+			// Ставим на паузу
+			this.isPaused = true;
+			if (this.gameInterval) {
+				clearInterval(this.gameInterval);
+				this.gameInterval = null;
+			}
 			this.pauseButton.setCaption('Resume');
 		} else {
-			// Запуск игрового цикла
-			this.gameInterval = setInterval(() => {
-				this.gameStep();
-			}, this.speedInterval);
+			// Снимаем с паузы
+			this.isPaused = false;
+			if (!this.isGameOver) {
+				this.gameInterval = setInterval(() => {
+					this.gameStep();
+				}, this.speedInterval);
+			}
 			this.pauseButton.setCaption('Pause');
 		}
 	};
