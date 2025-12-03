@@ -13,7 +13,6 @@ const models = [
             name: {
                 type: 'STRING',
                 allowNull: false,
-                unique: true,
             },
             description: {
                 type: 'STRING',
@@ -41,7 +40,6 @@ const models = [
             name: {
                 type: 'STRING',
                 allowNull: false,
-                unique: true,
             },
         },
         options: {

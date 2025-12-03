@@ -10,7 +10,12 @@ if (!global.messengerSseClients) {
 }
 const sseClients = global.messengerSseClients;
 
-eventBus.on('userCreated', async (user, { systems, roles, sessionID }) => {
+eventBus.on('userCreated', async (user, { systems, roles, sessionID } = {}) => {
+    // Валидация входных данных события
+    if (!user || typeof user !== 'object' || !user.id) {
+        console.error('[messenger] userCreated: некорректный объект пользователя', user);
+        return;
+    }
     if (!modelsDB || !modelsDB.Users || !modelsDB.Messenger_Chats || !modelsDB.Messenger_ChatMembers) {
         console.warn('[messenger] Модели недоступны при создании пользователя');
         return;
@@ -18,11 +23,12 @@ eventBus.on('userCreated', async (user, { systems, roles, sessionID }) => {
 
     try {
         const sequelize = modelsDB.Users.sequelize;
+        // ОТДЕЛЬНАЯ транзакция для создания чатов (независимая от создания пользователя)
         await sequelize.transaction(async (t) => {
             // 1. Создать приватные чаты с каждым существующим пользователем
             const existingUsers = await modelsDB.Users.findAll({ 
                 where: { id: { [require('sequelize').Op.ne]: user.id } },
-                transaction: t 
+                transaction: t
             });
             
             for (const existingUser of existingUsers) {
@@ -49,8 +55,12 @@ eventBus.on('userCreated', async (user, { systems, roles, sessionID }) => {
                 }
                 
                 if (!hasPrivate) {
-                    await createTwoUserChat({ userId1: user.id, userId2: existingUser.id });
-                    console.log(`[messenger] Создан приватный чат: ${user.name} ↔ ${existingUser.name}`);
+                    try {
+                        await createTwoUserChat({ user1: user, user2: existingUser }, null, t);
+                        console.log(`[messenger] Создан приватный чат: ${user.name} ↔ ${existingUser.name}`);
+                    } catch (chatError) {
+                        console.error(`[messenger] Ошибка создания чата между ${user.name} и ${existingUser.name}:`, chatError.message);
+                    }
                 }
             }
 
@@ -64,15 +74,19 @@ eventBus.on('userCreated', async (user, { systems, roles, sessionID }) => {
                 });
                 
                 if (!existing) {
-                    await modelsDB.Messenger_ChatMembers.create({
-                        chatId: localChat.id,
-                        userId: user.id,
-                        role: 'member',
-                        customName: 'Local chat',
-                        joinedAt: new Date(),
-                        isActive: true,
-                    }, { transaction: t });
-                    console.log(`[messenger] Пользователь ${user.name} добавлен в Local chat`);
+                    try {
+                        await modelsDB.Messenger_ChatMembers.create({
+                            chatId: localChat.id,
+                            userId: user.id,
+                            role: 'member',
+                            customName: 'Local chat',
+                            joinedAt: new Date(),
+                            isActive: true,
+                        }, { transaction: t });
+                        console.log(`[messenger] Пользователь ${user.name} добавлен в Local chat`);
+                    } catch (chatError) {
+                        console.error(`[messenger] Ошибка добавления пользователя ${user.name} в Local chat:`, chatError.message);
+                    }
                 }
             }
         });
@@ -369,29 +383,24 @@ async function sendMessage(params, sessionID) {
 
 
 // Создать приватный чат для двух пользователей
-// params: { userId1: number, userId2: number }
-async function createTwoUserChat(params, sessionID) {
-    const { userId1, userId2 } = params || {};
-    if (!userId1 || !userId2 || userId1 === userId2) {
-        return { error: 'Нужны два разных пользователя: userId1 и userId2' };
+// params: { user1: userModel, user2: userModel } - принимает sequelize-модели пользователей
+// transaction: если передана, используется эта транзакция, иначе создаётся новая
+async function createTwoUserChat(params, sessionID, transaction) {
+    const { user1, user2 } = params || {};
+    if (!user1 || !user2 || user1.id === user2.id) {
+        throw new Error('Нужны два разных пользователя: user1 и user2 (объекты sequelize-моделей)');
     }
-    if (!modelsDB || !modelsDB.Messenger_Chats || !modelsDB.Messenger_ChatMembers || !modelsDB.Users) {
-        return { error: 'Модели мессенджера недоступны' };
+    if (!modelsDB || !modelsDB.Messenger_Chats || !modelsDB.Messenger_ChatMembers) {
+        throw new Error('Модели мессенджера недоступны');
     }
 
     const sequelize = modelsDB.Users.sequelize;
-    return await sequelize.transaction(async (t) => {
-        // Получаем имена пользователей для персональных названий
-        const u1 = await modelsDB.Users.findByPk(userId1, { transaction: t });
-        const u2 = await modelsDB.Users.findByPk(userId2, { transaction: t });
-        if (!u1 || !u2) {
-            throw new Error('Пользователь не найден');
-        }
-
+    
+    const createChat = async (t) => {
         // Создаём чат, владелец — первый пользователь
         const chat = await modelsDB.Messenger_Chats.create({
-            userId: userId1,
-            name: `Диалог: ${u1.name} ↔ ${u2.name}`,
+            userId: user1.id,
+            name: `Диалог: ${user1.name} ↔ ${user2.name}`,
             description: 'Приватный диалог двух пользователей',
             isActive: true,
         }, { transaction: t });
@@ -399,24 +408,33 @@ async function createTwoUserChat(params, sessionID) {
         // Добавляем обоих участников с персональными именами (customName)
         await modelsDB.Messenger_ChatMembers.create({
             chatId: chat.id,
-            userId: userId1,
+            userId: user1.id,
             role: 'owner',
-            customName: u2.name,
+            customName: user2.name,
             joinedAt: new Date(),
             isActive: true,
         }, { transaction: t });
 
         await modelsDB.Messenger_ChatMembers.create({
             chatId: chat.id,
-            userId: userId2,
+            userId: user2.id,
             role: 'member',
-            customName: u1.name,
+            customName: user1.name,
             joinedAt: new Date(),
             isActive: true,
         }, { transaction: t });
 
         return { chatId: chat.id };
-    });
+    };
+
+    // Если транзакция передана, используем её; иначе создаём новую
+    if (transaction) {
+        return await createChat(transaction);
+    } else {
+        return await sequelize.transaction(async (t) => {
+            return await createChat(t);
+        });
+    }
 }
 
 

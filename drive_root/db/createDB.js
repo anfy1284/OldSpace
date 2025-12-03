@@ -8,7 +8,7 @@ const modelsDef = require('./db');
 const { DEFAULT_VALUES_TABLE } = require('./db');
 const { hashPassword } = require('./utilites');
 const { processDefaultValues } = require('../globalServerContext');
-const { normalizeType } = require('./migrationUtils');
+const { normalizeType, compareSchemas, syncUniqueConstraints } = require('./migrationUtils');
 
 // Загружаем конфигурацию и данные
 const rootConfig = require('../../server.config.json');
@@ -48,10 +48,34 @@ function getSequelizeInstance() {
 async function createAll() {
   await ensureDatabase();
   const sequelize = getSequelizeInstance();
+  const appsDir = path.resolve(__dirname, '../../apps');
+  const appModelDefs = [];
+  if (fs.existsSync(appsDir)) {
+    const entries = fs.readdirSync(appsDir, { withFileTypes: true }).filter(d => d.isDirectory());
+    for (const entry of entries) {
+      const dbPath = path.join(appsDir, entry.name, 'db', 'db.js');
+      if (!fs.existsSync(dbPath)) continue;
+      try {
+        const mod = require(dbPath);
+        const defs = Array.isArray(mod)
+          ? mod
+          : Array.isArray(mod && mod.models)
+            ? mod.models
+            : null;
+        if (Array.isArray(defs) && defs.length) {
+          appModelDefs.push(...defs);
+          console.log(`[MIGRATION] Добавлены модели приложения ${entry.name} (${defs.length})`);
+        }
+      } catch (err) {
+        console.error(`[MIGRATION] Не удалось загрузить модели приложения ${entry.name}:`, err.message);
+      }
+    }
+  }
+  const allModelsDef = [...modelsDef, ...appModelDefs];
   
   // Генерируем модели
   const models = {};
-  for (const def of modelsDef) {
+  for (const def of allModelsDef) {
     const fields = {};
     for (const [field, opts] of Object.entries(def.fields)) {
       const type = Sequelize.DataTypes[opts.type];
@@ -67,7 +91,7 @@ async function createAll() {
     console.log('[MIGRATION] Начало проверки схемы базы данных...');
     
     // Для каждой модели проверяем схему
-    for (const def of modelsDef) {
+    for (const def of allModelsDef) {
       const tableName = def.tableName;
       console.log(`[MIGRATION] Проверка таблицы: ${tableName}`);
       
@@ -84,61 +108,37 @@ async function createAll() {
       // Сравниваем схемы
       const currentSchema = tableExists;
       const desiredSchema = def.fields;
-      
-      let needsMigration = false;
-      const differences = [];
-      
-      // Проверяем существующие поля
-      for (const [fieldName, fieldDef] of Object.entries(desiredSchema)) {
-        if (!currentSchema[fieldName]) {
-          differences.push(`+ Добавлено поле: ${fieldName}`);
-          needsMigration = true;
-        } else {
-          // Проверяем тип данных
-          const currentTypeNorm = normalizeType(currentSchema[fieldName].type);
-          const desiredTypeNorm = (Sequelize.DataTypes[fieldDef.type].key || fieldDef.type).toUpperCase();
-          // Считаем совместимыми типы STRING/VARCHAR/TEXT, DATE/TIMESTAMP и т.п.
-          if (currentTypeNorm !== desiredTypeNorm) {
-            differences.push(`~ Изменен тип поля ${fieldName}: ${currentSchema[fieldName].type} -> ${desiredTypeNorm}`);
-            needsMigration = true;
-          }
-        }
-      }
-      
-      // Проверяем удаленные поля
-      for (const fieldName of Object.keys(currentSchema)) {
-        if (!desiredSchema[fieldName] && !['createdAt', 'updatedAt'].includes(fieldName)) {
-          differences.push(`- Удалено поле: ${fieldName}`);
-          needsMigration = true;
-        }
-      }
-      
+
+      const cmp = await compareSchemas(currentSchema, desiredSchema);
+      let needsMigration = cmp.needsMigration;
+      const differences = cmp.differences;
+
       if (!needsMigration) {
         console.log(`[MIGRATION] Таблица ${tableName} соответствует схеме, изменений не требуется.`);
+        // Синхронизируем уникальные ограничения, если они есть в БД, но убраны из модели
+        await syncUniqueConstraints(sequelize, transaction, tableName, desiredSchema);
         continue;
       }
-      
+
       console.log(`[MIGRATION] Таблица ${tableName} требует миграции:`);
       differences.forEach(diff => console.log(`  ${diff}`));
-      
-      // Миграция: копируем данные, пересоздаем таблицу
       const tempTableName = `${tableName}_temp_backup`;
       console.log(`[MIGRATION] Создание временной таблицы: ${tempTableName}`);
-      
-      // Копируем данные во временную таблицу
+
       await sequelize.query(
         `CREATE TABLE "${tempTableName}" AS SELECT * FROM "${tableName}"`,
         { transaction }
       );
       console.log(`[MIGRATION] Данные скопированы во временную таблицу.`);
-      
-      // Удаляем старую таблицу
+
       await sequelize.query(`DROP TABLE "${tableName}" CASCADE`, { transaction });
       console.log(`[MIGRATION] Старая таблица удалена.`);
-      
-      // Создаем новую таблицу по актуальной схеме
+
       await models[def.name].sync({ transaction });
       console.log(`[MIGRATION] Новая таблица создана по актуальной схеме.`);
+
+      // После пересоздания таблицы удаляем устаревшие уникальные ограничения
+      await syncUniqueConstraints(sequelize, transaction, tableName, desiredSchema);
       
       // Копируем данные обратно (только совпадающие поля)
       const commonFields = Object.keys(desiredSchema).filter(field => currentSchema[field]);

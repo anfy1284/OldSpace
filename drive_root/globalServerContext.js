@@ -3,6 +3,24 @@ const path = require('path');
 const Sequelize = require('sequelize');
 const sequelize = require('./db/sequelize_instance');
 const eventBus = require('./eventBus');
+const util = require('util');
+
+// Override console.error to print messages in red for easier spotting in terminal
+// Uses ANSI escape codes; falls back to original if formatting fails.
+try {
+    const _origConsoleError = console.error.bind(console);
+    console.error = function(...args) {
+        try {
+            const red = '\x1b[31m';
+            const reset = '\x1b[0m';
+            _origConsoleError(red + util.format(...args) + reset);
+        } catch (e) {
+            _origConsoleError(...args);
+        }
+    };
+} catch (e) {
+    // ignore if we can't patch console
+}
 
 // Генерация моделей из массива описаний
 function generateModelsFromDefs(modelDefs) {
@@ -295,13 +313,13 @@ module.exports = {
 };
 
 // --- Управление пользователями перенесено на уровень drive_root ---
-async function createNewUser(sessionID, name, systems, roles) {
+async function createNewUser(sessionID, name, systems, roles, isGuest = false, guestEmail = null) {
     const sequelizeInstance = modelsDB.Users.sequelize;
-    return await sequelizeInstance.transaction(async (t) => {
+    const user = await sequelizeInstance.transaction(async (t) => {
         const user = await modelsDB.Users.create({
-            isGuest: false,
+            isGuest,
             name,
-            email: `${name.replace(/\s+/g, '_').toLowerCase()}@user.local`,
+            email: guestEmail || `${name.replace(/\s+/g, '_').toLowerCase()}@user.local`,
             password_hash: '',
         }, { transaction: t });
 
@@ -338,29 +356,34 @@ async function createNewUser(sessionID, name, systems, roles) {
             }
         }
 
-        await eventBus.emit('userCreated', user, { systems, roles, sessionID });
         return user;
     });
+
+    // Эмитируем событие ПОСЛЕ завершения транзакции, когда пользователь уже в БД
+    await eventBus.emit('userCreated', user, { systems, roles, sessionID });
+    return user;
 }
 
 async function createGuestUser(sessionID, systems, roles) {
     const sequelizeInstance = modelsDB.Users.sequelize;
-    return await sequelizeInstance.transaction(async (t) => {
-        const [result] = await sequelizeInstance.query(
-            `SELECT name FROM users WHERE "isGuest"=true AND name LIKE 'Guest_%' ORDER BY id DESC LIMIT 1 FOR UPDATE`,
-            { transaction: t }
-        );
-        let nextNum = 1;
-        if (result.length > 0) {
-            const lastName = result[0].name;
-            const match = lastName && lastName.match(/^Guest_(\d+)$/);
-            if (match) nextNum = parseInt(match[1], 10) + 1;
-        }
-        const name = `Guest_${nextNum}`;
-        const guest = await createNewUser(sessionID, name, systems, roles);
-        await guest.update({ isGuest: true, email: `guest_${nextNum}@guest.local` }, { transaction: t });
-        return guest;
-    });
+    
+    // Находим последнего гостя в транзакции с FOR UPDATE
+    const [result] = await sequelizeInstance.query(
+        `SELECT name FROM users WHERE "isGuest"=true AND name LIKE 'Guest\\_%' ORDER BY id DESC LIMIT 1 FOR UPDATE`
+    );
+    
+    let nextNum = 1;
+    if (result.length > 0) {
+        const lastName = result[0].name;
+        const match = lastName && lastName.match(/^Guest_(\d+)$/);
+        if (match) nextNum = parseInt(match[1], 10) + 1;
+    }
+    
+    const name = `Guest_${nextNum}`;
+    const guestEmail = `guest_${nextNum}@guest.local`;
+    
+    // Вызываем createNewUser с флагом isGuest=true
+    return await createNewUser(sessionID, name, systems, roles, true, guestEmail);
 }
 
 // Экспортируем новые функции в глобальный контекст

@@ -52,7 +52,6 @@ const models = [
             email: {
                 type: 'STRING',
                 allowNull: true,
-                unique: true,
                 validate: {
                     isEmail: true,
                 },
@@ -96,7 +95,6 @@ const models = [
             sessionId: {
                 type: 'STRING',
                 allowNull: false,
-                unique: true,
                 // убрано ограничение len
             },
             // createdAt будет автоматически добавлен через timestamps: true

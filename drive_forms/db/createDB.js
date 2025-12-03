@@ -7,7 +7,7 @@ const modelsDef = require('./db');
 const rootModelsDef = require('../../drive_root/db/db');
 const { DEFAULT_VALUES_TABLE } = require('../../drive_root/db/db');
 const { processDefaultValues } = require('../../drive_root/globalServerContext');
-const { normalizeType } = require('../../drive_root/db/migrationUtils');
+const { compareSchemas, syncUniqueConstraints } = require('../../drive_root/db/migrationUtils');
 
 // Загружаем конфигурацию и данные
 const formsConfig = require('../server_config.json');
@@ -106,33 +106,15 @@ async function createAll() {
       
       const currentSchema = tableExists;
       const desiredSchema = def.fields;
-      
-      let needsMigration = false;
-      const differences = [];
-      
-      for (const [fieldName, fieldDef] of Object.entries(desiredSchema)) {
-        if (!currentSchema[fieldName]) {
-          differences.push(`+ Добавлено поле: ${fieldName}`);
-          needsMigration = true;
-        } else {
-          const currentTypeNorm = normalizeType(currentSchema[fieldName].type);
-          const desiredTypeNorm = (Sequelize.DataTypes[fieldDef.type].key || fieldDef.type).toUpperCase();
-          if (currentTypeNorm !== desiredTypeNorm) {
-            differences.push(`~ Изменен тип поля ${fieldName}: ${currentSchema[fieldName].type} -> ${desiredTypeNorm}`);
-            needsMigration = true;
-          }
-        }
-      }
-      
-      for (const fieldName of Object.keys(currentSchema)) {
-        if (!desiredSchema[fieldName] && !['createdAt', 'updatedAt'].includes(fieldName)) {
-          differences.push(`- Удалено поле: ${fieldName}`);
-          needsMigration = true;
-        }
-      }
-      
+
+      const cmp = await compareSchemas(currentSchema, desiredSchema);
+      let needsMigration = cmp.needsMigration;
+      const differences = cmp.differences;
+
+      // Если миграция не нужна — синхронизируем уникальные ограничения и переходим дальше
       if (!needsMigration) {
         console.log(`[MIGRATION] Таблица ${tableName} соответствует схеме, изменений не требуется.`);
+        await syncUniqueConstraints(sequelize, transaction, tableName, desiredSchema);
         continue;
       }
       
@@ -153,6 +135,7 @@ async function createAll() {
       
       await models[def.name].sync({ transaction });
       console.log(`[MIGRATION] Новая таблица создана по актуальной схеме.`);
+      await syncUniqueConstraints(sequelize, transaction, tableName, desiredSchema);
       
       const commonFields = Object.keys(desiredSchema).filter(field => currentSchema[field]);
       

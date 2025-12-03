@@ -43,7 +43,7 @@ async function ensurePrivateChatsForAllPairs() {
 
 				if (!hasPrivate) {
 					try {
-						await messenger.createTwoUserChat({ userId1: u1.id, userId2: u2.id });
+						await messenger.createTwoUserChat({ user1: u1, user2: u2 });
 						console.log(`[messenger:init] Создан приватный чат: ${u1.name} ↔ ${u2.name}`);
 					} catch (e) {
 						console.error('[messenger:init] Ошибка создания чата для пары', u1.id, u2.id, e.message);
