@@ -165,19 +165,19 @@ async function handleRequest(req, res) {
             const appName = parts[1];
             const resType = parts[3];
             const relPath = parts.slice(4).join(path.sep);
-            
+
             // Путь к папке apps относительно drive_root
             const appsDir = path.join(__dirname, '..', 'apps');
-            
+
             if (resType === 'public') {
                 const filePath = path.join(appsDir, appName, 'resources', 'public', relPath);
-                
+
                 if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
                     res.writeHead(404, { 'Content-Type': 'text/plain' });
                     res.end('404 Not Found');
                     return;
                 }
-                
+
                 const contentType = getContentType(filePath);
                 fs.readFile(filePath, (err, data) => {
                     if (err) {
@@ -204,7 +204,7 @@ async function handleRequest(req, res) {
             }
             res.writeHead(200, {
                 'Content-Type': 'text/html; charset=utf-8',
-                'Content-Security-Policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
+                'Content-Security-Policy': "default-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'"
             });
             res.end(data);
         });

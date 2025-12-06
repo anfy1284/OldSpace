@@ -28,7 +28,7 @@ async function ensureDatabase() {
   const dbName = dbSettings.database;
   const res = await adminClient.query('SELECT 1 FROM pg_database WHERE datname = $1', [dbName]);
   if (res.rowCount === 0) {
-    await adminClient.query(`CREATE DATABASE "${dbName}"`);
+    await adminClient.query(`CREATE DATABASE "${dbName}" WITH ENCODING 'UTF8' LC_COLLATE='C.UTF-8' LC_CTYPE='C.UTF-8'`);
     console.log(`База данных ${dbName} создана.`);
   } else {
     console.log(`База данных ${dbName} уже существует.`);

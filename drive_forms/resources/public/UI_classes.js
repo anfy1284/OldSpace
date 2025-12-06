@@ -190,6 +190,7 @@ class Form extends UIObject {
         super();
         this.title = '';
         this.titleBar = null;
+        this.titleTextElement = null;
         this.contentArea = null;
         this.movable = true;
         this.resizable = true;
@@ -244,7 +245,9 @@ class Form extends UIObject {
 
     setTitle(title) {
         this.title = title;
-        if (this.titleBar) {
+        if (this.titleTextElement) {
+            this.titleTextElement.textContent = title;
+        } else if (this.titleBar) {
             this.titleBar.textContent = title;
         }
     }
@@ -397,14 +400,16 @@ class Form extends UIObject {
             this.titleBar.style.alignItems = 'center';
 
             // Текст заголовка
-            const titleText = document.createElement('span');
-            titleText.textContent = this.title;
-            this.titleBar.appendChild(titleText);
+            this.titleTextElement = document.createElement('span');
+            this.titleTextElement.textContent = this.title;
+            this.titleBar.appendChild(this.titleTextElement);
 
             // Контейнер для кнопок
             const buttonsContainer = document.createElement('div');
             buttonsContainer.style.display = 'flex';
             buttonsContainer.style.gap = '2px';
+            buttonsContainer.style.flexShrink = '0'; // Запрещаем сжимать кнопки
+            buttonsContainer.style.marginLeft = 'auto'; // Прижимаем вправо (на всякий случай)
 
             // Базовый стиль для кнопок заголовка (размер/выравнивание и т.п.)
             const buttonStyle = {

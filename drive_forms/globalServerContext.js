@@ -2,8 +2,8 @@ const global = require('../drive_root/globalServerContext');
 const eventBus = require('../drive_root/eventBus');
 const fs = require('fs');
 const path = require('path');
-
-// Загрузить client.js приложений, доступных для роли пользователя (склеить текст)
+const { Sequelize, DataTypes } = require('sequelize');
+const sequelize = require('../drive_root/db/sequelize_instance');
 async function loadApps(user) {
   const accessRole = await getUserAccessRole(user);
   const appsJsonPath = path.join(__dirname, 'apps.json');
@@ -27,19 +27,17 @@ async function loadApps(user) {
 }
 // Глобальные функции для серверных модулей drive_forms
 
-const Sequelize = require('sequelize');
-const sequelize = require('../drive_root/db/sequelize_instance');
 const modelsDef = require('./db/db');
 
 const accessRoleDef = modelsDef.find(m => m.name === 'AccessRoles');
 const userSystemDef = modelsDef.find(m => m.name === 'UserSystems');
 
 const AccessRole = sequelize.define(accessRoleDef.name, Object.fromEntries(
-  Object.entries(accessRoleDef.fields).map(([k, v]) => [k, { ...v, type: Sequelize.DataTypes[v.type] }])
+  Object.entries(accessRoleDef.fields).map(([k, v]) => [k, { ...v, type: DataTypes[v.type] }])
 ), { ...accessRoleDef.options, tableName: accessRoleDef.tableName });
 
 const UserSystem = sequelize.define(userSystemDef.name, Object.fromEntries(
-  Object.entries(userSystemDef.fields).map(([k, v]) => [k, { ...v, type: Sequelize.DataTypes[v.type] }])
+  Object.entries(userSystemDef.fields).map(([k, v]) => [k, { ...v, type: DataTypes[v.type] }])
 ), { ...userSystemDef.options, tableName: userSystemDef.tableName });
 
 // Получить AccessRole пользователя по объекту user

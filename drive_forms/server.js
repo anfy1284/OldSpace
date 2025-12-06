@@ -213,6 +213,42 @@ function handleRequest(req, res, appDir, appAlias) {
 			return;
 		}
 
+		// --- Endpoint для загрузки файлов приложений через POST ---
+		if (req.method === 'POST' && req.url === `/${appAlias}/upload`) {
+			// Ожидаем multipart/form-data с app, method, file и другими полями
+			const multer = require('multer');
+			const upload = multer({ storage: multer.memoryStorage() }); // В памяти, чтобы передать в метод
+			upload.single('file')(req, res, (err) => {
+				if (err) {
+					res.writeHead(400, { 'Content-Type': 'application/json' });
+					res.end(JSON.stringify({ error: 'Upload error: ' + err.message }));
+					return;
+				}
+				const { app, method } = req.body;
+				if (!app || !method) {
+					res.writeHead(400, { 'Content-Type': 'application/json' });
+					res.end(JSON.stringify({ error: 'Missing app or method' }));
+					return;
+				}
+				// Извлекаем sessionID из cookie
+				let sessionID = null;
+				if (req.headers && req.headers.cookie) {
+					const match = req.headers.cookie.match(/(?:^|; )sessionID=([^;]+)/i);
+					if (match) sessionID = decodeURIComponent(match[1]);
+				}
+				invokeAppMethod(app, method, req.body, sessionID, (err, result) => {
+					if (err) {
+						res.writeHead(500, { 'Content-Type': 'application/json' });
+						res.end(JSON.stringify({ error: err.message }));
+					} else {
+						res.writeHead(200, { 'Content-Type': 'application/json' });
+						res.end(JSON.stringify({ result }));
+					}
+				}, req, res);
+			});
+			return;
+		}
+
 		// --- Endpoint для вызова метода приложения через POST ---
 		if (req.method === 'POST' && req.url === `/${appAlias}/call`) {
 			let body = '';

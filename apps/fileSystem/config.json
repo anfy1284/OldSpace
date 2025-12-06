@@ -1,0 +1,24 @@
+{
+    "level": "app",
+    "autoStart": false,
+    "system": ["mySpace"],
+    "access": ["admin", "public"],
+    "dependencies": {},
+    "storagePath": "./uploads",
+    "mainMenuCommands": [
+        {
+            "id": "main",
+            "items": [
+                {
+                    "caption": "apps",
+                    "items": [
+                        {
+                            "caption": "File System",
+                            "action": "open"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

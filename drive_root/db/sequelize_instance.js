@@ -11,6 +11,9 @@ const sequelize = new Sequelize(settings.database, settings.username, settings.p
   port: settings.port,
   dialect: settings.dialect,
   logging: false,
+  dialectOptions: {
+    charset: 'utf8',
+  },
 });
 
 module.exports = sequelize;

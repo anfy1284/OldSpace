@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const Sequelize = require('sequelize');
+const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('./db/sequelize_instance');
 const eventBus = require('./eventBus');
 const util = require('util');
@@ -26,13 +26,18 @@ try {
 function generateModelsFromDefs(modelDefs) {
     const models = {};
     for (const def of modelDefs) {
-        models[def.name] = sequelize.define(
-            def.name,
-            Object.fromEntries(
-                Object.entries(def.fields).map(([k, v]) => [k, { ...v, type: Sequelize.DataTypes[v.type] }])
-            ),
-            { ...def.options, tableName: def.tableName }
-        );
+        try {
+            models[def.name] = sequelize.define(
+                def.name,
+                Object.fromEntries(
+                    Object.entries(def.fields).map(([k, v]) => [k, { ...v, type: DataTypes[v.type] }])
+                ),
+                { ...def.options, tableName: def.tableName }
+            );
+        } catch (e) {
+            console.error(`Error defining model ${def.name}:`, e.message);
+            throw e;
+        }
     }
     return models;
 }
@@ -156,6 +161,8 @@ function getContentType(fileName) {
             return 'image/jpeg';
         case '.svg':
             return 'image/svg+xml';
+        case '.wasm':
+            return 'application/wasm';
         default:
             return 'application/octet-stream';
     }
@@ -166,10 +173,10 @@ const modelsDef = require('./db/db');
 const sessionDef = modelsDef.find(m => m.name === 'Sessions');
 const userDef = modelsDef.find(m => m.name === 'Users');
 const Session = sequelize.define(sessionDef.name, Object.fromEntries(
-    Object.entries(sessionDef.fields).map(([k, v]) => [k, { ...v, type: Sequelize.DataTypes[v.type] }])
+    Object.entries(sessionDef.fields).map(([k, v]) => [k, { ...v, type: DataTypes[v.type] }])
 ), { ...sessionDef.options, tableName: sessionDef.tableName });
 const User = sequelize.define(userDef.name, Object.fromEntries(
-    Object.entries(userDef.fields).map(([k, v]) => [k, { ...v, type: Sequelize.DataTypes[v.type] }])
+    Object.entries(userDef.fields).map(([k, v]) => [k, { ...v, type: DataTypes[v.type] }])
 ), { ...userDef.options, tableName: userDef.tableName });
 async function getUserBySessionID(sessionID) {
     if (!sessionID) return null;

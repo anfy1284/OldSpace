@@ -3,7 +3,7 @@
     "apps": [
         {
             "name": "tetris",
-            "path": "/tetris"        
+            "path": "/tetris"
         },
         {
             "name": "login",
@@ -24,7 +24,14 @@
         {
             "name": "main_menu",
             "path": "/main_menu"
+        },
+        {
+            "name": "cpp_app",
+            "path": "/cpp_app"
+        },
+        {
+            "name": "fileSystem",
+            "path": "/fileSystem"
         }
-
     ]
 }

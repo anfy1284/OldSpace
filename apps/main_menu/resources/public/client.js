@@ -140,6 +140,12 @@ function transformItems(items) {
         }
         if (item.action === 'open' && item.appName) {
             newItem.onClick = () => {
+                // Pass params if available
+                if (item.params) {
+                    window.AppParams = window.AppParams || {};
+                    window.AppParams[item.appName] = item.params;
+                }
+
                 const scriptUrl = `/apps/${item.appName}/resources/public/client.js`;
                 // Всегда загружаем скрипт заново для создания нового экземпляра приложения
                 const script = document.createElement('script');
