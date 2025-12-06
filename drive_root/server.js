@@ -91,7 +91,8 @@ async function handleRequest(req, res) {
 
     // Универсальная отдача ресурсов: /res/public/..., /res/protected/...
     if (req.url.startsWith('/res/')) {
-        const parts = req.url.split('/').filter(Boolean); // ['', 'res', 'public', ...] => ['res', 'public', ...]
+        const urlPath = req.url.split('?')[0];
+        const parts = urlPath.split('/').filter(Boolean); // ['', 'res', 'public', ...] => ['res', 'public', ...]
         if (parts.length >= 3) {
             const resType = parts[1]; // public или protected
             const relPath = parts.slice(2).join(path.sep);
@@ -150,6 +151,47 @@ async function handleRequest(req, res) {
         res.writeHead(404, { 'Content-Type': 'text/plain' });
         res.end('404 Not Found');
         return;
+    }
+
+    // Обработка статики приложений: /apps/<appName>/resources/<type>/...
+    if (req.url.startsWith('/apps/')) {
+        const urlPath = req.url.split('?')[0];
+        const parts = urlPath.split('/').filter(Boolean); // ['', 'apps', 'appName', 'resources', 'type', ...] => ['apps', 'appName', 'resources', 'type', ...]
+        // parts[0] = 'apps'
+        // parts[1] = appName
+        // parts[2] = 'resources'
+        // parts[3] = type (public/protected)
+        if (parts.length >= 5 && parts[2] === 'resources') {
+            const appName = parts[1];
+            const resType = parts[3];
+            const relPath = parts.slice(4).join(path.sep);
+            
+            // Путь к папке apps относительно drive_root
+            const appsDir = path.join(__dirname, '..', 'apps');
+            
+            if (resType === 'public') {
+                const filePath = path.join(appsDir, appName, 'resources', 'public', relPath);
+                
+                if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+                    res.writeHead(404, { 'Content-Type': 'text/plain' });
+                    res.end('404 Not Found');
+                    return;
+                }
+                
+                const contentType = getContentType(filePath);
+                fs.readFile(filePath, (err, data) => {
+                    if (err) {
+                        res.writeHead(500, { 'Content-Type': 'text/plain' });
+                        res.end('Error reading file');
+                        return;
+                    }
+                    res.writeHead(200, { 'Content-Type': contentType });
+                    res.end(data);
+                });
+                return;
+            }
+            // TODO: protected resources for apps
+        }
     }
 
     // ...остальная логика...

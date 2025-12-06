@@ -47,7 +47,7 @@ async function getOrCreateSession(req, res) {
     }
   }
 
-  // Если сессии нет — создаём новую
+  // Если сессии нет - создаём новую
   if (!session) {
     // Удаляем старую сессию, если была
     if (sessionId) {

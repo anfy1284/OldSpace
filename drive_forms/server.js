@@ -60,7 +60,7 @@ function invokeAppMethod(appName, methodName, params, sessionID, callback, req, 
 	if (typeof appModule[methodName] !== 'function') return callback(new Error('Method not found in app'));
 	// Вызов функции с sessionID отдельным параметром
 	try {
-		// params — объект, sessionID — строка, req, res — для SSE
+		// params - объект, sessionID - строка, req, res - для SSE
 		const result = appModule[methodName](params, sessionID, req, res);
 		if (result && typeof result.then === 'function') {
 			// async/Promise
@@ -251,7 +251,7 @@ function handleRequest(req, res, appDir, appAlias) {
 			return;
 		}
 
-		// Всё остальное — 404
+		// Всё остальное - 404
 		res.writeHead(404, { 'Content-Type': 'text/plain' });
 		res.end('Not Found');
 	} catch (e) {

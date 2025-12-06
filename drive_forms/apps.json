@@ -16,6 +16,14 @@
         {
             "name": "messenger",
             "path": "/messenger"
+        },
+        {
+            "name": "taskbar",
+            "path": "/taskbar"
+        },
+        {
+            "name": "main_menu",
+            "path": "/main_menu"
         }
 
     ]

@@ -256,7 +256,7 @@ async function createAll() {
         });
         
         if (defaultValueEntry) {
-          // Запись существует в DefaultValues — обновляем данные
+          // Запись существует в DefaultValues - обновляем данные
           const existingRecord = await Model.findOne({
             where: { id: defaultValueEntry.recordId },
             transaction
@@ -266,13 +266,13 @@ async function createAll() {
             await existingRecord.update(data, { transaction });
             console.log(`[MIGRATION] Обновлена предопределенная запись: ${entity}[${existingRecord.id}] (defaultValueId=${defaultValueId})`);
           } else {
-            // Записи нет в основной таблице — создаем заново
+            // Записи нет в основной таблице - создаем заново
             const newRecord = await Model.create(data, { transaction });
             await defaultValueEntry.update({ recordId: newRecord.id }, { transaction });
             console.log(`[MIGRATION] Пересоздана предопределенная запись: ${entity}[${newRecord.id}] (defaultValueId=${defaultValueId})`);
           }
         } else {
-          // Записи нет в DefaultValues — проверяем существование по id
+          // Записи нет в DefaultValues - проверяем существование по id
           let recordToRegister;
           
           if (data.id) {
@@ -284,7 +284,7 @@ async function createAll() {
           }
           
           if (recordToRegister) {
-            // Запись существует — обновляем и регистрируем в DefaultValues
+            // Запись существует - обновляем и регистрируем в DefaultValues
             const updateData = { ...data };
             delete updateData.id;
             
@@ -318,7 +318,7 @@ async function createAll() {
               console.log(`[MIGRATION] Запись уже зарегистрирована: ${entity}[${recordToRegister.id}] (defaultValueId=${defaultValueId})`);
             }
           } else {
-            // Записи нет нигде — создаем новую
+            // Записи нет нигде - создаем новую
             const newRecord = await Model.create(data, { transaction });
             
             // Проверяем, нет ли уже такой записи в DefaultValues
@@ -362,7 +362,7 @@ async function createAll() {
   
   await sequelize.close();
 
-  // После успешного завершения — запуск инициализации drive_forms/db/createDB.js
+  // После успешного завершения - запуск инициализации drive_forms/db/createDB.js
   const formsCreateDB = path.resolve(__dirname, '../../drive_forms/db/createDB.js');
   if (fs.existsSync(formsCreateDB)) {
     const { spawn } = require('child_process');

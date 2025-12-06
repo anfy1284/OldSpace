@@ -2,6 +2,6 @@
     "level": "app",
     "autoStart": true,
     "system": ["mySpace"],
-    "access": ["nologged"],
+    "access": ["admin", "public"],
     "dependencies": {}
 }

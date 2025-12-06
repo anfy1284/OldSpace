@@ -397,7 +397,7 @@ async function createTwoUserChat(params, sessionID, transaction) {
     const sequelize = modelsDB.Users.sequelize;
     
     const createChat = async (t) => {
-        // Создаём чат, владелец — первый пользователь
+        // Создаём чат, владелец - первый пользователь
         const chat = await modelsDB.Messenger_Chats.create({
             userId: user1.id,
             name: `Диалог: ${user1.name} ↔ ${user2.name}`,

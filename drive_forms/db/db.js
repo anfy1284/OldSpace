@@ -1,4 +1,4 @@
-// db.js — структура данных для моделей уровня drive_forms
+// db.js - структура данных для моделей уровня drive_forms
 
 const models = [
     {

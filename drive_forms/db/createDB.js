@@ -111,7 +111,7 @@ async function createAll() {
       let needsMigration = cmp.needsMigration;
       const differences = cmp.differences;
 
-      // Если миграция не нужна — синхронизируем уникальные ограничения и переходим дальше
+      // Если миграция не нужна - синхронизируем уникальные ограничения и переходим дальше
       if (!needsMigration) {
         console.log(`[MIGRATION] Таблица ${tableName} соответствует схеме, изменений не требуется.`);
         await syncUniqueConstraints(sequelize, transaction, tableName, desiredSchema);

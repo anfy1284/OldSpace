@@ -18,8 +18,8 @@ loginForm.btnCreate = null;
 loginForm.btnGuest = null;
 loginForm.contentArea = null;
 
-loginForm.onDraw = function (parent) {
-    Form.prototype.onDraw.call(this, parent);
+loginForm.Draw = function (parent) {
+    Form.prototype.Draw.call(this, parent);
 
     this.contentArea = this.getContentArea();
     if (!this.contentArea) return;
@@ -27,24 +27,24 @@ loginForm.onDraw = function (parent) {
     // Username
     this.lblUsername = new Label(this.contentArea);
     this.lblUsername.setText('Username:');
-    this.lblUsername.onDraw(this.contentArea);
+    this.lblUsername.Draw(this.contentArea);
 
     this.txtUsername = new TextBox(this.contentArea);
-    this.txtUsername.onDraw(this.contentArea);
+    this.txtUsername.Draw(this.contentArea);
 
     // Password
     this.lblPassword = new Label(this.contentArea);
     this.lblPassword.setText('Password:');
-    this.lblPassword.onDraw(this.contentArea);
+    this.lblPassword.Draw(this.contentArea);
 
     this.txtPassword = new TextBox(this.contentArea);
-    this.txtPassword.onDraw(this.contentArea);
+    this.txtPassword.Draw(this.contentArea);
     this.txtPassword.element.type = 'password';
 
     // Buttons
     this.btnLogin = new Button(this.contentArea);
     this.btnLogin.setCaption('Login');
-    this.btnLogin.onDraw(this.contentArea);
+    this.btnLogin.Draw(this.contentArea);
     this.btnLogin.onClick = function () {
         const username = loginForm.txtUsername.getText();
         const password = loginForm.txtPassword.getText();
@@ -53,7 +53,7 @@ loginForm.onDraw = function (parent) {
 
     this.btnCreate = new Button(this.contentArea);
     this.btnCreate.setCaption('Create Login');
-    this.btnCreate.onDraw(this.contentArea);
+    this.btnCreate.Draw(this.contentArea);
     this.btnCreate.onClick = function () {
         callServerMethod('login', 'testConnection', {})
             .then(result => {
@@ -66,7 +66,7 @@ loginForm.onDraw = function (parent) {
 
     this.btnGuest = new Button(this.contentArea);
     this.btnGuest.setCaption('Login as Guest');
-    this.btnGuest.onDraw(this.contentArea);
+    this.btnGuest.Draw(this.contentArea);
     this.btnGuest.onClick = function () {
         callServerMethod('login', 'loginAsGuest', {})
             .then(result => {
@@ -145,4 +145,4 @@ loginForm.onResizing = function () {
     this.reDraw();
 }
 
-loginForm.onDraw(document.body);
+loginForm.Draw(document.body);

@@ -14,10 +14,13 @@ async function loadApps(user) {
     if (!fs.existsSync(configPath)) continue;
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     if (Array.isArray(config.access) && config.access.includes(accessRole)) {
+        // Only load apps marked with autoStart: true
+        if (config.autoStart === true) {
             const clientPath = path.join(__dirname, '..', 'apps', app.name, 'resources', 'public', 'client.js');
             if (fs.existsSync(clientPath)) {
                 allCode += fs.readFileSync(clientPath, 'utf8') + '\n\n';
             }
+        }
     }
   }
   return allCode;
