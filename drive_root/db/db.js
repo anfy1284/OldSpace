@@ -1,6 +1,6 @@
 
-// db.js - только структура данных для моделей
-// Используется в createDB.js для динамического создания моделей
+// db.js - data structure for models only
+// Used in createDB.js for dynamic model creation
 
 
 const models = [
@@ -60,7 +60,7 @@ const models = [
                 type: 'STRING',
                 allowNull: false,
                 unique: false,
-            },            
+            },
             password_hash: {
                 type: 'STRING',
                 allowNull: true,
@@ -95,12 +95,12 @@ const models = [
             sessionId: {
                 type: 'STRING',
                 allowNull: false,
-                // убрано ограничение len
+                // len constraint removed
             },
-            // createdAt будет автоматически добавлен через timestamps: true
+            // createdAt will be automatically added via timestamps: true
             userId: {
                 type: 'INTEGER',
-                allowNull: true, // теперь разрешено null для гостя
+                allowNull: true, // now allowed to be null for guests
                 references: {
                     model: 'users',
                     key: 'id',

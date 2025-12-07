@@ -14,18 +14,18 @@ async function loadApps(user) {
     if (!fs.existsSync(configPath)) continue;
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     if (Array.isArray(config.access) && config.access.includes(accessRole)) {
-        // Only load apps marked with autoStart: true
-        if (config.autoStart === true) {
-            const clientPath = path.join(__dirname, '..', 'apps', app.name, 'resources', 'public', 'client.js');
-            if (fs.existsSync(clientPath)) {
-                allCode += fs.readFileSync(clientPath, 'utf8') + '\n\n';
-            }
+      // Only load apps marked with autoStart: true
+      if (config.autoStart === true) {
+        const clientPath = path.join(__dirname, '..', 'apps', app.name, 'resources', 'public', 'client.js');
+        if (fs.existsSync(clientPath)) {
+          allCode += fs.readFileSync(clientPath, 'utf8') + '\n\n';
         }
+      }
     }
   }
   return allCode;
 }
-// Глобальные функции для серверных модулей drive_forms
+// Global functions for drive_forms server modules
 
 const modelsDef = require('./db/db');
 
@@ -40,18 +40,18 @@ const UserSystem = sequelize.define(userSystemDef.name, Object.fromEntries(
   Object.entries(userSystemDef.fields).map(([k, v]) => [k, { ...v, type: DataTypes[v.type] }])
 ), { ...userSystemDef.options, tableName: userSystemDef.tableName });
 
-// Получить AccessRole пользователя по объекту user
+// Get AccessRole for user object
 async function getUserAccessRole(user) {
-    if (!user) return 'nologged';
-    // Ищем первую запись user_systems для пользователя
-    const userSystem = await UserSystem.findOne({ where: { userId: user.id }, order: [['id', 'ASC']] });
-    if (!userSystem || !userSystem.roleId) return null;
-    const role = await AccessRole.findOne({ where: { id: userSystem.roleId } });
-    return role ? role.name : null;
+  if (!user) return 'nologged';
+  // Find first user_systems record for user
+  const userSystem = await UserSystem.findOne({ where: { userId: user.id }, order: [['id', 'ASC']] });
+  if (!userSystem || !userSystem.roleId) return null;
+  const role = await AccessRole.findOne({ where: { id: userSystem.roleId } });
+  return role ? role.name : null;
 }
 
 module.exports = {
   getUserAccessRole,
   loadApps,
-  // Управление пользователями больше не на этом уровне
+  // User management is no longer at this level
 };

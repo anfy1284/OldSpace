@@ -9,7 +9,7 @@ const util = require('util');
 // Uses ANSI escape codes; falls back to original if formatting fails.
 try {
     const _origConsoleError = console.error.bind(console);
-    console.error = function(...args) {
+    console.error = function (...args) {
         try {
             const red = '\x1b[31m';
             const reset = '\x1b[0m';
@@ -22,7 +22,7 @@ try {
     // ignore if we can't patch console
 }
 
-// Генерация моделей из массива описаний
+// Generate models from array of definitions
 function generateModelsFromDefs(modelDefs) {
     const models = {};
     for (const def of modelDefs) {
@@ -42,11 +42,11 @@ function generateModelsFromDefs(modelDefs) {
     return models;
 }
 
-// Собираем все db.js (drive_root, appDir, ...)
+// Collect all db.js (drive_root, appDir, ...)
 function collectAllModelDefs() {
     const defs = [];
     const associations = [];
-    
+
     // 1. drive_root/db/db.js
     const rootDbPath = path.join(__dirname, 'db', 'db.js');
     if (fs.existsSync(rootDbPath)) {
@@ -56,7 +56,7 @@ function collectAllModelDefs() {
         defs.push(...(Array.isArray(rootModels) ? rootModels : []));
         associations.push(...rootAssoc);
     }
-    // 2. appDir/db/db.js (например, drive_forms)
+    // 2. appDir/db/db.js (e.g. drive_forms)
     const config = require(path.join(__dirname, '..', 'server.config.json'));
     const appDir = path.join(__dirname, '..', config.appDir);
     const appDbPath = path.join(appDir, 'db', 'db.js');
@@ -67,12 +67,12 @@ function collectAllModelDefs() {
         defs.push(...(Array.isArray(appModels) ? appModels : []));
         associations.push(...appAssoc);
     }
-    // 3. Модели приложений из drive_forms/apps.json
+    // 3. App models from drive_forms/apps.json
     try {
         const appsJsonPath = path.join(appDir, 'apps.json');
         if (fs.existsSync(appsJsonPath)) {
             const appsConfig = JSON.parse(fs.readFileSync(appsJsonPath, 'utf8'));
-            // База для приложений берётся из конфигурации apps.json: { path: "/apps" }
+            // Database for apps is taken from apps.json config: { path: "/apps" }
             if (typeof appsConfig.path === 'string' && appsConfig.path.length > 0) {
                 const appsPathCfg = appsConfig.path.replace(/^[/\\]+/, '');
                 const appsBaseDir = path.join(__dirname, '..', appsPathCfg);
@@ -88,7 +88,7 @@ function collectAllModelDefs() {
                                 defs.push(...(Array.isArray(appModels) ? appModels : []));
                                 associations.push(...appAssoc);
                             } catch (e) {
-                                console.error(`[globalModels] Ошибка загрузки моделей приложения ${app.name}:`, e.message);
+                                console.error(`[globalModels] Error loading models for app ${app.name}:`, e.message);
                             }
                         }
                     }
@@ -96,41 +96,41 @@ function collectAllModelDefs() {
             }
         }
     } catch (e) {
-        console.error('[globalModels] Ошибка чтения apps.json:', e.message);
+        console.error('[globalModels] Error reading apps.json:', e.message);
     }
     return { models: defs, associations };
 }
 
-// Глобальная переменная с моделями
+// Global variable with models
 let modelsDB = {};
 
 function initModelsDB() {
     const { models: allDefs, associations: allAssoc } = collectAllModelDefs();
     modelsDB = generateModelsFromDefs(allDefs);
-    
-    // Применяем ассоциации после создания всех моделей
+
+    // Apply associations after creating all models
     for (const assoc of allAssoc) {
         const sourceModel = modelsDB[assoc.source];
         const targetModel = modelsDB[assoc.target];
-        
+
         if (!sourceModel) {
-            console.warn(`[globalModels] Модель ${assoc.source} не найдена для ассоциации`);
+            console.warn(`[globalModels] Model ${assoc.source} not found for association`);
             continue;
         }
         if (!targetModel) {
-            console.warn(`[globalModels] Модель ${assoc.target} не найдена для ассоциации`);
+            console.warn(`[globalModels] Model ${assoc.target} not found for association`);
             continue;
         }
-        
+
         try {
             sourceModel[assoc.type](targetModel, assoc.options);
         } catch (e) {
-            console.error(`[globalModels] Ошибка создания ассоциации ${assoc.source}.${assoc.type}(${assoc.target}):`, e.message);
+            console.error(`[globalModels] Error creating association ${assoc.source}.${assoc.type}(${assoc.target}):`, e.message);
         }
     }
 }
 
-// Инициализация при запуске
+// Initialization on startup
 initModelsDB();
 
 
@@ -142,7 +142,7 @@ function helloFromGlobal(name) {
     return `Hello, ${name}! (from globalServerContext)`;
 }
 
-// Универсальная функция определения Content-Type для файлов
+// Universal function to determine Content-Type for files
 function getContentType(fileName) {
     const ext = require('path').extname(fileName).toLowerCase();
     switch (ext) {
@@ -168,7 +168,7 @@ function getContentType(fileName) {
     }
 }
 
-// Получить пользователя по sessionID (асинхронно)
+// Get user by sessionID (async)
 const modelsDef = require('./db/db');
 const sessionDef = modelsDef.find(m => m.name === 'Sessions');
 const userDef = modelsDef.find(m => m.name === 'Users');
@@ -186,30 +186,30 @@ async function getUserBySessionID(sessionID) {
     return user ? user.get({ plain: true }) : null;
 }
 
-// Обработка предопределенных значений
-// Добавляет _level к каждой записи и проверяет уникальность id в пределах уровня
+// Process default values
+// Adds _level to each record and checks id uniqueness within the level
 function processDefaultValues(data, level) {
     const result = {};
     const allIds = new Set();
-    
+
     for (const [entity, records] of Object.entries(data)) {
         if (!Array.isArray(records)) {
             result[entity] = records;
             continue;
         }
-        
-        // Проверяем уникальность id в пределах уровня (все таблицы)
+
+        // Check id uniqueness within the level (all tables)
         for (const record of records) {
             if (record.id !== undefined) {
                 if (allIds.has(record.id)) {
-                    console.error(`[defaultValues] ОШИБКА: Дублирующийся id=${record.id} в таблице "${entity}" (id должен быть уникален в пределах уровня "${level}")`);
+                    console.error(`[defaultValues] ERROR: Duplicate id=${record.id} in table "${entity}" (id must be unique within level "${level}")`);
                 }
                 allIds.add(record.id);
             } else {
-                console.warn(`[defaultValues] ПРЕДУПРЕЖДЕНИЕ: Запись в "${entity}" не имеет поля id`);
+                console.warn(`[defaultValues] WARNING: Record in "${entity}" has no id field`);
             }
         }
-        
+
         result[entity] = records.map(record => ({
             ...record,
             _level: level
@@ -218,66 +218,66 @@ function processDefaultValues(data, level) {
     return result;
 }
 
-// Хранилище предопределённых данных: { level: { tableName: { defaultValueId: recordInstance } } }
+// Default values storage: { level: { tableName: { defaultValueId: recordInstance } } }
 let defaultValuesCache = {};
 
 /**
- * Загружает все предопределённые данные из таблицы default_values
- * и кеширует Sequelize-инстансы записей для быстрого доступа
- * Возвращает структуру: { level: { tableName: { defaultValueId: recordInstance } } }
+ * Loads all default values from the default_values table
+ * and caches Sequelize instances of records for quick access
+ * Returns structure: { level: { tableName: { defaultValueId: recordInstance } } }
  */
 async function loadDefaultValuesFromDB() {
     const DefaultValuesModel = modelsDB.DefaultValues;
     if (!DefaultValuesModel) {
-        console.error('[defaultValues] Модель DefaultValues не найдена в modelsDB');
+        console.error('[defaultValues] Model DefaultValues not found in modelsDB');
         return {};
     }
-    
+
     const cache = {};
-    
+
     try {
-        // Загружаем все записи из default_values
+        // Load all records from default_values
         const allDefaults = await DefaultValuesModel.findAll();
-        
-        // Группируем по уровню и таблице
+
+        // Group by level and table
         for (const defValue of allDefaults) {
             const { level, tableName, defaultValueId, recordId } = defValue;
-            
-            // Находим модель для таблицы
+
+            // Find model for the table
             const modelDef = Object.values(modelsDB).find(m => m.tableName === tableName);
             if (!modelDef) {
-                console.warn(`[defaultValues] Модель для таблицы ${tableName} не найдена`);
+                console.warn(`[defaultValues] Model for table ${tableName} not found`);
                 continue;
             }
-            
-            // Загружаем запись из БД
+
+            // Load record from DB
             const record = await modelDef.findByPk(recordId);
             if (!record) {
-                console.warn(`[defaultValues] Запись ${tableName}[${recordId}] не найдена (level=${level}, defaultValueId=${defaultValueId})`);
+                console.warn(`[defaultValues] Record ${tableName}[${recordId}] not found (level=${level}, defaultValueId=${defaultValueId})`);
                 continue;
             }
-            
-            // Кешируем
+
+            // Cache
             if (!cache[level]) cache[level] = {};
             if (!cache[level][tableName]) cache[level][tableName] = {};
             cache[level][tableName][defaultValueId] = record;
         }
-        
-        console.log(`[defaultValues] Загружено ${allDefaults.length} предопределённых записей из БД`);
+
+        console.log(`[defaultValues] Loaded ${allDefaults.length} default records from DB`);
     } catch (error) {
-        console.error('[defaultValues] Ошибка загрузки из БД:', error.message);
+        console.error('[defaultValues] Error loading from DB:', error.message);
     }
-    
+
     defaultValuesCache = cache;
     return cache;
 }
 
 /**
- * Получить Sequelize-инстанс предопределённой записи
- * @param {string} level - Уровень (например, 'messenger', 'root', 'forms')
- * @param {string} tableName - Имя таблицы
- * @param {number} defaultValueId - ID предопределённого значения
- * @returns {Object|null} - Sequelize-инстанс записи или null
+ * Get Sequelize instance of a default record
+ * @param {string} level - Level (e.g., 'messenger', 'root', 'forms')
+ * @param {string} tableName - Table name
+ * @param {number} defaultValueId - ID of the default value
+ * @returns {Object|null} - Sequelize instance of the record or null
  */
 function getDefaultValue(level, tableName, defaultValueId) {
     if (!defaultValuesCache[level]) return null;
@@ -286,10 +286,10 @@ function getDefaultValue(level, tableName, defaultValueId) {
 }
 
 /**
- * Получить все предопределённые записи для таблицы по уровню
- * @param {string} level - Уровень
- * @param {string} tableName - Имя таблицы
- * @returns {Array} - Массив Sequelize-инстансов
+ * Get all default records for a table by level
+ * @param {string} level - Level
+ * @param {string} tableName - Table name
+ * @returns {Array} - Array of Sequelize instances
  */
 function getDefaultValues(level, tableName) {
     if (!defaultValuesCache[level]) return [];
@@ -298,8 +298,8 @@ function getDefaultValues(level, tableName) {
 }
 
 /**
- * Перезагрузить кеш предопределённых данных из БД
- * Полезно после миграции или изменений в default_values
+ * Reload default values cache from DB
+ * Useful after migrations or changes in default_values
  */
 async function reloadDefaultValues() {
     return await loadDefaultValuesFromDB();
@@ -319,7 +319,7 @@ module.exports = {
     reloadDefaultValues,
 };
 
-// --- Управление пользователями перенесено на уровень drive_root ---
+// --- User management moved to drive_root level ---
 async function createNewUser(sessionID, name, systems, roles, isGuest = false, guestEmail = null) {
     const sequelizeInstance = modelsDB.Users.sequelize;
     const user = await sequelizeInstance.transaction(async (t) => {
@@ -366,33 +366,33 @@ async function createNewUser(sessionID, name, systems, roles, isGuest = false, g
         return user;
     });
 
-    // Эмитируем событие ПОСЛЕ завершения транзакции, когда пользователь уже в БД
+    // Emit event AFTER transaction completes, when user is already in DB
     await eventBus.emit('userCreated', user, { systems, roles, sessionID });
     return user;
 }
 
 async function createGuestUser(sessionID, systems, roles) {
     const sequelizeInstance = modelsDB.Users.sequelize;
-    
-    // Находим последнего гостя в транзакции с FOR UPDATE
+
+    // Find last guest in transaction with FOR UPDATE
     const [result] = await sequelizeInstance.query(
         `SELECT name FROM users WHERE "isGuest"=true AND name LIKE 'Guest\\_%' ORDER BY id DESC LIMIT 1 FOR UPDATE`
     );
-    
+
     let nextNum = 1;
     if (result.length > 0) {
         const lastName = result[0].name;
         const match = lastName && lastName.match(/^Guest_(\d+)$/);
         if (match) nextNum = parseInt(match[1], 10) + 1;
     }
-    
+
     const name = `Guest_${nextNum}`;
     const guestEmail = `guest_${nextNum}@guest.local`;
-    
-    // Вызываем createNewUser с флагом isGuest=true
+
+    // Call createNewUser with isGuest=true flag
     return await createNewUser(sessionID, name, systems, roles, true, guestEmail);
 }
 
-// Экспортируем новые функции в глобальный контекст
+// Export new functions to global context
 module.exports.createNewUser = createNewUser;
 module.exports.createGuestUser = createGuestUser;

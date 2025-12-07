@@ -1,11 +1,11 @@
-// Простой асинхронный EventBus для Node.js
+// Simple async EventBus for Node.js
 const events = {};
 
 module.exports = {
   /**
-   * Подписка на событие
-   * @param {string} event - имя события
-   * @param {function} handler - async-функция-обработчик
+   * Subscribe to event
+   * @param {string} event - event name
+   * @param {function} handler - async handler function
    */
   on(event, handler) {
     if (!events[event]) events[event] = [];
@@ -13,9 +13,9 @@ module.exports = {
   },
 
   /**
-   * Вызов всех обработчиков события
-   * @param {string} event - имя события
-   * @param  {...any} args - аргументы для обработчиков
+   * Call all event handlers
+   * @param {string} event - event name
+   * @param  {...any} args - arguments for handlers
    */
   async emit(event, ...args) {
     if (events[event]) {
@@ -26,7 +26,7 @@ module.exports = {
   },
 
   /**
-   * Сбросить все обработчики (для тестов или перезапуска)
+   * Reset all handlers (for tests or restart)
    */
   clear() {
     Object.keys(events).forEach(e => delete events[e]);

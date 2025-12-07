@@ -1,31 +1,31 @@
-// Инициализация приложения messenger: проверка и создание приватных чатов для всех пар пользователей
+// Messenger app initialization: check and create private chats for all user pairs
 const global = require('../../drive_root/globalServerContext');
 const messenger = require('./server');
 
 async function ensurePrivateChatsForAllPairs() {
 	const { modelsDB } = global;
 	if (!modelsDB || !modelsDB.Users || !modelsDB.Messenger_Chats || !modelsDB.Messenger_ChatMembers) {
-		console.warn('[messenger:init] Требуемые модели недоступны');
+		console.warn('[messenger:init] Required models unavailable');
 		return;
 	}
 
 	const sequelize = modelsDB.Users.sequelize;
 	await sequelize.transaction(async (t) => {
 		const users = await modelsDB.Users.findAll({ attributes: ['id', 'name'], transaction: t });
-		// Перебираем уникальные пары (i<j)
+		// Iterate unique pairs (i<j)
 		for (let i = 0; i < users.length; i++) {
 			for (let j = i + 1; j < users.length; j++) {
 				const u1 = users[i];
 				const u2 = users[j];
 
-				// Проверяем, есть ли уже приватный чат между этими пользователями
-				// Критерий: чат, где оба участвуют как члены
+				// Check if private chat already exists between these users
+				// Criteria: chat where both participate as members
 				const existingMemberships = await modelsDB.Messenger_ChatMembers.findAll({
 					where: { userId: [u1.id, u2.id] },
 					transaction: t
 				});
 
-				// Группируем по chatId и проверяем наличие обеих userId
+				// Group by chatId and check presence of both userIds
 				const chatMap = new Map();
 				for (const m of existingMemberships) {
 					const arr = chatMap.get(m.chatId) || [];
@@ -44,9 +44,9 @@ async function ensurePrivateChatsForAllPairs() {
 				if (!hasPrivate) {
 					try {
 						await messenger.createTwoUserChat({ user1: u1, user2: u2 });
-						console.log(`[messenger:init] Создан приватный чат: ${u1.name} ↔ ${u2.name}`);
+						console.log(`[messenger:init] Private chat created: ${u1.name} ↔ ${u2.name}`);
 					} catch (e) {
-						console.error('[messenger:init] Ошибка создания чата для пары', u1.id, u2.id, e.message);
+						console.error('[messenger:init] Error creating chat for pair', u1.id, u2.id, e.message);
 					}
 				}
 			}
@@ -54,36 +54,36 @@ async function ensurePrivateChatsForAllPairs() {
 	});
 }
 
-// Запуск при инициализации приложения
+// Run on app initialization
 ensurePrivateChatsForAllPairs().catch(e => {
-	console.error('[messenger:init] Ошибка инициализации приватных чатов:', e.message);
+	console.error('[messenger:init] Private chats initialization error:', e.message);
 });
 
-// Проверка, что в общем чате "Local chat" состоят все пользователи; добавить отсутствующих
+// Check that all users are in "Local chat"; add missing ones
 async function ensureLocalChatIncludesAllUsers() {
 	const { modelsDB } = global;
 	if (!modelsDB || !modelsDB.Users || !modelsDB.Messenger_Chats || !modelsDB.Messenger_ChatMembers) {
-		console.warn('[messenger:init] Требуемые модели недоступны для Local chat');
+		console.warn('[messenger:init] Required models unavailable for Local chat');
 		return;
 	}
 
 	const sequelize = modelsDB.Users.sequelize;
 	await sequelize.transaction(async (t) => {
-		// Получаем предопределённый общий чат через defaultValuesCache
-		const localChatDefId = 1; // из apps/messenger/db/defaultValues.json
+		// Get predefined common chat via defaultValuesCache
+		const localChatDefId = 1; // from apps/messenger/db/defaultValues.json
 		const localChat = global.getDefaultValue('messenger', 'Messenger_Chats', localChatDefId);
 		if (!localChat) {
-			console.warn('[messenger:init] Не найден предопределённый "Local chat" в defaultValuesCache');
+			console.warn('[messenger:init] Predefined "Local chat" not found in defaultValuesCache');
 			return;
 		}
 
-		// Получить всех пользователей
+		// Get all users
 		const users = await modelsDB.Users.findAll({ attributes: ['id', 'name'], transaction: t });
-		// Текущие участники чата
+		// Current chat members
 		const members = await modelsDB.Messenger_ChatMembers.findAll({ where: { chatId: localChat.id }, transaction: t });
 		const existingIds = new Set(members.map(m => m.userId));
 
-		// Добавить отсутствующих
+		// Add missing
 		for (const u of users) {
 			if (!existingIds.has(u.id)) {
 				await modelsDB.Messenger_ChatMembers.create({
@@ -94,12 +94,12 @@ async function ensureLocalChatIncludesAllUsers() {
 					joinedAt: new Date(),
 					isActive: true,
 				}, { transaction: t });
-				console.log(`[messenger:init] Пользователь добавлен в Local chat: ${u.name}`);
+				console.log(`[messenger:init] User added to Local chat: ${u.name}`);
 			}
 		}
 	});
 }
 
 ensureLocalChatIncludesAllUsers().catch(e => {
-	console.error('[messenger:init] Ошибка актуализации Local chat:', e.message);
+	console.error('[messenger:init] Local chat actualization error:', e.message);
 });

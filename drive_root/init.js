@@ -1,2 +1,2 @@
-// Инициализация уровня. Здесь можно разместить код, который должен выполняться при запуске системы на базовом уровне.
-// console.log('drive_root/init.js выполнен');
+// Level initialization. Use this space for code that should run during system startup at the base level.
+// console.log('drive_root/init.js executed');

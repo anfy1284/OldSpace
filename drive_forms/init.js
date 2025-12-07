@@ -1,2 +1,2 @@
-// Инициализация прикладного уровня. Здесь можно разместить код, который должен выполняться при запуске системы на уровне приложения.
-// console.log('drive_forms/init.js выполнен');
+// Application level initialization. Place code here that should run during system startup at the application level.
+// console.log('drive_forms/init.js executed');

@@ -1,6 +1,6 @@
 {
     const formCalc = new Form();
-    formCalc.setTitle('Калькулятор');
+    formCalc.setTitle('Calculator');
     formCalc.setX(300);
     formCalc.setY(300);
     formCalc.setWidth(500);
@@ -15,10 +15,10 @@
     formCalc.isError = false;
 
     formCalc.Draw = function (parent) {
-        // Вызываем базовую реализацию
+        // Call base implementation
         Form.prototype.Draw.call(this, parent);
 
-        // Создаем невидимую таблицу 5x4 (добавили строку для TextBox)
+        // Create invisible 5x4 table (added row for TextBox)
         const table = document.createElement('table');
         this.getContentArea().appendChild(table);
         table.style.width = '100%';
@@ -26,7 +26,7 @@
         table.style.borderCollapse = 'collapse';
         table.style.tableLayout = 'fixed';
 
-        // Первая строка с TextBox (объединенные колонки)
+        // First row with TextBox (merged columns)
         const displayRow = document.createElement('tr');
         const displayCell = document.createElement('td');
         displayCell.colSpan = 4;
@@ -35,7 +35,7 @@
         displayRow.appendChild(displayCell);
         table.appendChild(displayRow);
 
-        // Создаем TextBox для отображения результата
+        // Create TextBox for result display
         const displayTextBox = new TextBox(displayCell);
         displayTextBox.setParent(formCalc)
         displayTextBox.setReadOnly(true);
@@ -56,7 +56,7 @@
             textBoxElement.style.fontSize = '24px';
             textBoxElement.style.textAlign = 'right';
 
-            // Устанавливаем высоту строки на основе высоты TextBox
+            // Set row height based on TextBox height
             const textBoxHeight = textBoxElement.offsetHeight;
             const cellPadding = parseInt(displayCell.style.padding) * 2;
             const rowHeight = textBoxHeight + cellPadding;
@@ -64,7 +64,7 @@
             displayCell.style.height = rowHeight + 'px';
         }
 
-        // Создаем кнопки калькулятора
+        // Create calculator buttons
         const buttons = [
             [{ caption: '%', digit: null, operation: '%' }, { caption: 'CE', digit: null, operation: 'CE' }, { caption: 'C', digit: null, operation: 'C' }, { caption: '⌫', digit: null, operation: 'backspace' }],
             [{ caption: '7', digit: '7', operation: null }, { caption: '8', digit: '8', operation: null }, { caption: '9', digit: '9', operation: null }, { caption: '/', digit: null, operation: '/' }],
@@ -89,7 +89,7 @@
                 btn.setParent(cell);
                 btn.Draw(cell);
                 btn.onClick = function () {
-                    // Обработка нажатия кнопки
+                    // Button click handling
                     if (buttons[i][j].digit) {
                         if (formCalc.isError) {
                             formCalc.isError = false;
@@ -170,7 +170,7 @@
                     formCalc.refreshDisplay();
                 }
 
-                // Получаем элемент кнопки и настраиваем его размеры
+                // Get button element and set its dimensions
                 const btnElement = btn.getElement();
                 if (btnElement) {
                     btnElement.style.width = '100%';
@@ -186,7 +186,7 @@
 
     formCalc.doAction = function (action, params) {
         if (action === 'open') {
-            // Отображаем форму калькулятора
+            // Show calculator form
             formCalc.Draw(document.body);
         }
     };

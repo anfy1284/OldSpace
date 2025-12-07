@@ -10,7 +10,7 @@ const { hashPassword } = require('./utilites');
 const { processDefaultValues } = require('../globalServerContext');
 const { normalizeType, compareSchemas, syncUniqueConstraints } = require('./migrationUtils');
 
-// Загружаем конфигурацию и данные
+// Load config and data
 const rootConfig = require('../../server.config.json');
 const LEVEL = rootConfig.level;
 const defaultValuesData = require('./defaultValues.json');
@@ -29,9 +29,9 @@ async function ensureDatabase() {
   const res = await adminClient.query('SELECT 1 FROM pg_database WHERE datname = $1', [dbName]);
   if (res.rowCount === 0) {
     await adminClient.query(`CREATE DATABASE "${dbName}" WITH ENCODING 'UTF8' LC_COLLATE='C.UTF-8' LC_CTYPE='C.UTF-8'`);
-    console.log(`База данных ${dbName} создана.`);
+    console.log(`Database ${dbName} created.`);
   } else {
-    console.log(`База данных ${dbName} уже существует.`);
+    console.log(`Database ${dbName} already exists.`);
   }
   await adminClient.end();
 }
@@ -64,16 +64,16 @@ async function createAll() {
             : null;
         if (Array.isArray(defs) && defs.length) {
           appModelDefs.push(...defs);
-          console.log(`[MIGRATION] Добавлены модели приложения ${entry.name} (${defs.length})`);
+          console.log(`[MIGRATION] Added models for app ${entry.name} (${defs.length})`);
         }
       } catch (err) {
-        console.error(`[MIGRATION] Не удалось загрузить модели приложения ${entry.name}:`, err.message);
+        console.error(`[MIGRATION] Failed to load models for app ${entry.name}:`, err.message);
       }
     }
   }
   const allModelsDef = [...modelsDef, ...appModelDefs];
-  
-  // Генерируем модели
+
+  // Generate models
   const models = {};
   for (const def of allModelsDef) {
     const fields = {};
@@ -84,28 +84,28 @@ async function createAll() {
     models[def.name] = sequelize.define(def.name, fields, { ...def.options, tableName: def.tableName });
   }
 
-  // Начинаем транзакцию для всех операций миграции
+  // Start transaction for all migration operations
   const transaction = await sequelize.transaction();
-  
+
   try {
-    console.log('[MIGRATION] Начало проверки схемы базы данных...');
-    
-    // Для каждой модели проверяем схему
+    console.log('[MIGRATION] Starting database schema check...');
+
+    // Check schema for each model
     for (const def of allModelsDef) {
       const tableName = def.tableName;
-      console.log(`[MIGRATION] Проверка таблицы: ${tableName}`);
-      
-      // Получаем описание таблицы из БД
+      console.log(`[MIGRATION] Checking table: ${tableName}`);
+
+      // Get table description from DB
       const tableExists = await sequelize.getQueryInterface().describeTable(tableName, { transaction }).catch(() => null);
-      
+
       if (!tableExists) {
-        console.log(`[MIGRATION] Таблица ${tableName} не существует, будет создана.`);
+        console.log(`[MIGRATION] Table ${tableName} does not exist, creating...`);
         await models[def.name].sync({ transaction });
-        console.log(`[MIGRATION] Таблица ${tableName} создана.`);
+        console.log(`[MIGRATION] Table ${tableName} created.`);
         continue;
       }
-      
-      // Сравниваем схемы
+
+      // Compare schemas
       const currentSchema = tableExists;
       const desiredSchema = def.fields;
 
@@ -114,42 +114,42 @@ async function createAll() {
       const differences = cmp.differences;
 
       if (!needsMigration) {
-        console.log(`[MIGRATION] Таблица ${tableName} соответствует схеме, изменений не требуется.`);
-        // Синхронизируем уникальные ограничения, если они есть в БД, но убраны из модели
+        console.log(`[MIGRATION] Table ${tableName} matches schema, no changes needed.`);
+        // Sync unique constraints if present in DB but removed from model
         await syncUniqueConstraints(sequelize, transaction, tableName, desiredSchema);
         continue;
       }
 
-      console.log(`[MIGRATION] Таблица ${tableName} требует миграции:`);
+      console.log(`[MIGRATION] Table ${tableName} needs migration:`);
       differences.forEach(diff => console.log(`  ${diff}`));
       const tempTableName = `${tableName}_temp_backup`;
-      console.log(`[MIGRATION] Создание временной таблицы: ${tempTableName}`);
+      console.log(`[MIGRATION] Creating temp table: ${tempTableName}`);
 
       await sequelize.query(
         `CREATE TABLE "${tempTableName}" AS SELECT * FROM "${tableName}"`,
         { transaction }
       );
-      console.log(`[MIGRATION] Данные скопированы во временную таблицу.`);
+      console.log(`[MIGRATION] Data copied to temp table.`);
 
       await sequelize.query(`DROP TABLE "${tableName}" CASCADE`, { transaction });
-      console.log(`[MIGRATION] Старая таблица удалена.`);
+      console.log(`[MIGRATION] Old table dropped.`);
 
       await models[def.name].sync({ transaction });
-      console.log(`[MIGRATION] Новая таблица создана по актуальной схеме.`);
+      console.log(`[MIGRATION] New table created with updated schema.`);
 
-      // После пересоздания таблицы удаляем устаревшие уникальные ограничения
+      // Remove obsolete unique constraints after recreation
       await syncUniqueConstraints(sequelize, transaction, tableName, desiredSchema);
-      
-      // Копируем данные обратно (только совпадающие поля)
+
+      // Copy data back (only matching fields)
       const commonFields = Object.keys(desiredSchema).filter(field => currentSchema[field]);
-      
+
       if (commonFields.length > 0) {
-        // Копируем данные построчно через Sequelize для автозаполнения timestamps
-        const rows = await sequelize.query(`SELECT * FROM "${tempTableName}"`, { 
-          transaction, 
-          type: Sequelize.QueryTypes.SELECT 
+        // Copy data row by row via Sequelize to auto-fill timestamps
+        const rows = await sequelize.query(`SELECT * FROM "${tempTableName}"`, {
+          transaction,
+          type: Sequelize.QueryTypes.SELECT
         });
-        
+
         for (const row of rows) {
           const data = {};
           for (const field of commonFields) {
@@ -158,34 +158,34 @@ async function createAll() {
           try {
             await models[def.name].create(data, { transaction });
           } catch (rowErr) {
-            console.log(`[MIGRATION] Не удалось скопировать строку: ${rowErr.message}`);
+            console.log(`[MIGRATION] Failed to copy row: ${rowErr.message}`);
           }
         }
-        console.log(`[MIGRATION] Данные скопированы обратно (${rows.length} строк, ${commonFields.length} полей).`);
+        console.log(`[MIGRATION] Data copied back (${rows.length} rows, ${commonFields.length} fields).`);
       }
-      
-      // Удаляем временную таблицу
+
+      // Drop temp table
       await sequelize.query(`DROP TABLE "${tempTableName}"`, { transaction });
-      console.log(`[MIGRATION] Временная таблица удалена.`);
-      
-      // Сбрасываем sequence для autoIncrement после восстановления данных
+      console.log(`[MIGRATION] Temp table dropped.`);
+
+      // Reset sequence for autoIncrement after restoring data
       const pkField = Object.keys(desiredSchema).find(key => desiredSchema[key].primaryKey && desiredSchema[key].autoIncrement);
       if (pkField) {
         await sequelize.query(
           `SELECT setval(pg_get_serial_sequence('"${tableName}"', '${pkField}'), COALESCE(MAX("${pkField}"), 1)) FROM "${tableName}"`,
           { transaction }
         );
-        console.log(`[MIGRATION] Sequence для ${tableName}.${pkField} сброшена.`);
+        console.log(`[MIGRATION] Sequence for ${tableName}.${pkField} reset.`);
       }
-      
-      console.log(`[MIGRATION] Миграция таблицы ${tableName} завершена успешно.`);
+
+      console.log(`[MIGRATION] Migration of table ${tableName} completed successfully.`);
     }
-    
-    // Управление предопределенными данными
-    console.log('[MIGRATION] Управление предопределенными данными...');
+
+    // Default values management
+    console.log('[MIGRATION] Processing default values...');
     const DefaultValuesModel = models.DefaultValues;
-    
-    // Собираем все defaultValueId текущего уровня из defaultValues
+
+    // Collect all defaultValueId for current level from defaultValues
     const currentLevelIds = new Set();
     for (const [entity, records] of Object.entries(defaultValues)) {
       if (Array.isArray(records)) {
@@ -196,44 +196,44 @@ async function createAll() {
         });
       }
     }
-    
-    // Удаляем записи, которых нет в текущем уровне
+
+    // Remove records not present in current level
     const existingDefaults = await DefaultValuesModel.findAll({
       where: { level: LEVEL },
       transaction
     });
-    
+
     for (const defValue of existingDefaults) {
       if (!currentLevelIds.has(defValue.defaultValueId)) {
-        // Удаляем запись из основной таблицы
+        // Remove record from main table
         const modelDef = modelsDef.find(m => m.tableName === defValue.tableName);
         if (modelDef && models[modelDef.name]) {
           await models[modelDef.name].destroy({
             where: { id: defValue.recordId },
             transaction
           });
-          console.log(`[MIGRATION] Удалена устаревшая запись: ${defValue.tableName}[${defValue.recordId}] (defaultValueId=${defValue.defaultValueId})`);
+          console.log(`[MIGRATION] Removed obsolete record: ${defValue.tableName}[${defValue.recordId}] (defaultValueId=${defValue.defaultValueId})`);
         }
-        // Удаляем запись из DEFAULT_VALUES_TABLE
+        // Remove record from DEFAULT_VALUES_TABLE
         await defValue.destroy({ transaction });
       }
     }
-    
-    // Добавляем или обновляем предопределенные данные
+
+    // Add or update default values
     for (const [entity, records] of Object.entries(defaultValues)) {
       const modelDef = modelsDef.find(m => m.tableName === entity);
       if (!modelDef) continue;
       const Model = models[modelDef.name];
       if (!Model) continue;
-      
+
       for (const record of records) {
         const defaultValueId = record.id;
         if (defaultValueId === undefined) continue;
-        
+
         let data = { ...record };
-        delete data._level; // Удаляем служебное поле
-        
-        // Специфичная обработка для users
+        delete data._level; // Remove service field
+
+        // Specific handling for users
         if (entity === 'users') {
           if (data.username) {
             data.name = data.username;
@@ -244,8 +244,8 @@ async function createAll() {
             delete data.password;
           }
         }
-        
-        // Ищем запись в DEFAULT_VALUES_TABLE
+
+        // Look up record in DEFAULT_VALUES_TABLE
         const defaultValueEntry = await DefaultValuesModel.findOne({
           where: {
             level: LEVEL,
@@ -254,49 +254,49 @@ async function createAll() {
           },
           transaction
         });
-        
+
         if (defaultValueEntry) {
-          // Запись существует в DefaultValues - обновляем данные
+          // Record exists in DefaultValues - update data
           const existingRecord = await Model.findOne({
             where: { id: defaultValueEntry.recordId },
             transaction
           });
-          
+
           if (existingRecord) {
             await existingRecord.update(data, { transaction });
-            console.log(`[MIGRATION] Обновлена предопределенная запись: ${entity}[${existingRecord.id}] (defaultValueId=${defaultValueId})`);
+            console.log(`[MIGRATION] Updated default record: ${entity}[${existingRecord.id}] (defaultValueId=${defaultValueId})`);
           } else {
-            // Записи нет в основной таблице - создаем заново
+            // Record missing in main table - recreate
             const newRecord = await Model.create(data, { transaction });
             await defaultValueEntry.update({ recordId: newRecord.id }, { transaction });
-            console.log(`[MIGRATION] Пересоздана предопределенная запись: ${entity}[${newRecord.id}] (defaultValueId=${defaultValueId})`);
+            console.log(`[MIGRATION] Recreated default record: ${entity}[${newRecord.id}] (defaultValueId=${defaultValueId})`);
           }
         } else {
-          // Записи нет в DefaultValues - проверяем существование по id
+          // Record not in DefaultValues - check existence by id
           let recordToRegister;
-          
+
           if (data.id) {
-            // Если указан id, проверяем существование записи
+            // If id is specified, check if record exists
             recordToRegister = await Model.findOne({
               where: { id: data.id },
               transaction
             });
           }
-          
+
           if (recordToRegister) {
-            // Запись существует - обновляем и регистрируем в DefaultValues
+            // Record exists - update and register in DefaultValues
             const updateData = { ...data };
             delete updateData.id;
-            
-            const hasChanges = Object.keys(updateData).some(key => 
+
+            const hasChanges = Object.keys(updateData).some(key =>
               recordToRegister[key] !== updateData[key]
             );
-            
+
             if (hasChanges) {
               await recordToRegister.update(updateData, { transaction });
             }
-            
-            // Проверяем, нет ли уже такой записи в DefaultValues
+
+            // Check if already registered in DefaultValues
             const existingDefVal = await DefaultValuesModel.findOne({
               where: {
                 level: LEVEL,
@@ -305,7 +305,7 @@ async function createAll() {
               },
               transaction
             });
-            
+
             if (!existingDefVal) {
               await DefaultValuesModel.create({
                 level: LEVEL,
@@ -313,15 +313,15 @@ async function createAll() {
                 tableName: entity,
                 recordId: recordToRegister.id
               }, { transaction });
-              console.log(`[MIGRATION] Зарегистрирована существующая запись: ${entity}[${recordToRegister.id}] (defaultValueId=${defaultValueId})`);
+              console.log(`[MIGRATION] Registered existing record: ${entity}[${recordToRegister.id}] (defaultValueId=${defaultValueId})`);
             } else {
-              console.log(`[MIGRATION] Запись уже зарегистрирована: ${entity}[${recordToRegister.id}] (defaultValueId=${defaultValueId})`);
+              console.log(`[MIGRATION] Record already registered: ${entity}[${recordToRegister.id}] (defaultValueId=${defaultValueId})`);
             }
           } else {
-            // Записи нет нигде - создаем новую
+            // Record doesn't exist anywhere - create new
             const newRecord = await Model.create(data, { transaction });
-            
-            // Проверяем, нет ли уже такой записи в DefaultValues
+
+            // Check if already registered in DefaultValues
             const existingDefVal = await DefaultValuesModel.findOne({
               where: {
                 level: LEVEL,
@@ -330,7 +330,7 @@ async function createAll() {
               },
               transaction
             });
-            
+
             if (!existingDefVal) {
               await DefaultValuesModel.create({
                 level: LEVEL,
@@ -338,31 +338,31 @@ async function createAll() {
                 tableName: entity,
                 recordId: newRecord.id
               }, { transaction });
-              console.log(`[MIGRATION] Добавлена предопределенная запись: ${entity}[${newRecord.id}] (defaultValueId=${defaultValueId})`);
+              console.log(`[MIGRATION] Added default record: ${entity}[${newRecord.id}] (defaultValueId=${defaultValueId})`);
             } else {
-              console.log(`[MIGRATION] Запись уже зарегистрирована (обновлен recordId): ${entity}[${newRecord.id}] (defaultValueId=${defaultValueId})`);
+              console.log(`[MIGRATION] Record already registered (updated recordId): ${entity}[${newRecord.id}] (defaultValueId=${defaultValueId})`);
             }
           }
         }
       }
     }
-    
-    // Фиксируем транзакцию
+
+    // Commit transaction
     await transaction.commit();
-    console.log('[MIGRATION] Миграция базы данных завершена успешно.');
-    
+    console.log('[MIGRATION] Database migration completed successfully.');
+
   } catch (error) {
-    // Откатываем транзакцию при ошибке
+    // Rollback transaction on error
     await transaction.rollback();
-    console.error('[MIGRATION] ОШИБКА: Миграция отменена, все изменения откатаны.');
-    console.error('[MIGRATION] Детали ошибки:', error.message);
+    console.error('[MIGRATION] ERROR: Migration cancelled, all changes rolled back.');
+    console.error('[MIGRATION] Error details:', error.message);
     console.error(error.stack);
     throw error;
   }
-  
+
   await sequelize.close();
 
-  // После успешного завершения - запуск инициализации drive_forms/db/createDB.js
+  // After successful completion - run drive_forms/db/createDB.js
   const formsCreateDB = path.resolve(__dirname, '../../drive_forms/db/createDB.js');
   if (fs.existsSync(formsCreateDB)) {
     const { spawn } = require('child_process');
@@ -374,6 +374,6 @@ async function createAll() {
 }
 
 createAll().catch(e => {
-  console.error('Ошибка при создании БД:', e);
+  console.error('Error creating database:', e);
   process.exit(1);
 });

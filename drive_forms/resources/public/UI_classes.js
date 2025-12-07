@@ -11,23 +11,23 @@ class UIObject {
         this.z = 0;
     }
     // Setters / Getters for geometry & depth
-    setX(x) { 
-        this.x = x; 
+    setX(x) {
+        this.x = x;
         if (this.element) this.element.style.left = x + 'px';
     }
     getX() { return this.x; }
-    setY(y) { 
-        this.y = y; 
+    setY(y) {
+        this.y = y;
         if (this.element) this.element.style.top = y + 'px';
     }
     getY() { return this.y; }
-    setWidth(width) { 
-        this.width = width; 
+    setWidth(width) {
+        this.width = width;
         if (this.element) this.element.style.width = width + 'px';
     }
     getWidth() { return this.width; }
-    setHeight(height) { 
-        this.height = height; 
+    setHeight(height) {
+        this.height = height;
         if (this.element) this.element.style.height = height + 'px';
     }
     getHeight() { return this.height; }
@@ -37,7 +37,7 @@ class UIObject {
     getElement() { return this.element; }
     setElement(el) { this.element = el; }
 
-    // Загрузка client_config.json (ленивая, с кешированием)
+    // Load client_config.json (lazy, cached)
     static loadClientConfig() {
         if (UIObject._clientConfig) return Promise.resolve(UIObject._clientConfig);
         if (UIObject._clientConfigPromise) return UIObject._clientConfigPromise;
@@ -152,7 +152,7 @@ class UIObject {
     }
 
     Draw(container) {
-        // Метод для отрисовки элемента
+        // Method to draw the element
     }
 
     onClick(event) {
@@ -199,12 +199,12 @@ class Form extends UIObject {
         this.resizeDirection = null;
         this.dragOffsetX = 0;
         this.dragOffsetY = 0;
-        this.anchorToWindow = null; // 'center', 'bottom-right', или null
+        this.anchorToWindow = null; // 'center', 'bottom-right', or null
         this.windowResizeHandler = null;
-        this.lockAspectRatio = false; // Блокировка изменения пропорций
-        this.initialAspectRatio = 0; // Начальное соотношение сторон
-        this.btnMaximize = null; // Ссылка на кнопку максимизации
-        this.btnMaximizeCanvas = null; // Canvas с иконкой кнопки maximize
+        this.lockAspectRatio = false; // Lock aspect ratio
+        this.initialAspectRatio = 0; // Initial aspect ratio
+        this.btnMaximize = null; // Reference to maximize button
+        this.btnMaximizeCanvas = null; // Canvas with maximize button icon
         this.isMaximized = false;
         this.restoreX = 0;
         this.restoreY = 0;
@@ -214,7 +214,7 @@ class Form extends UIObject {
 
     activate() {
         if (this.element) {
-            // Деактивируем все другие формы
+            // Deactivate all other forms
             Form._allForms.forEach(form => {
                 if (form !== this) {
                     form.deactivate();
@@ -225,7 +225,7 @@ class Form extends UIObject {
             this.element.style.zIndex = this.z;
             this.element.focus();
 
-            // Делаем заголовок синим
+            // Make title bar blue
             if (this.titleBar) {
                 this.titleBar.style.backgroundColor = '#000080';
             }
@@ -237,7 +237,7 @@ class Form extends UIObject {
     }
 
     deactivate() {
-        // Делаем заголовок темно-серым
+        // Make title bar dark gray
         if (this.titleBar) {
             this.titleBar.style.backgroundColor = '#808080';
         }
@@ -274,28 +274,28 @@ class Form extends UIObject {
 
     setLockAspectRatio(value) {
         this.lockAspectRatio = value;
-        // Обновляем состояние кнопки maximize
+        // Update maximize button state
         if (this.btnMaximize && this.btnMaximizeCanvas) {
             this.btnMaximize.disabled = value;
             this.btnMaximize.style.cursor = value ? 'not-allowed' : 'pointer';
 
-            // Перерисовываем иконку с нужным цветом
+            // Redraw icon with correct color
             const ctx = this.btnMaximizeCanvas.getContext('2d');
             ctx.clearRect(0, 0, 12, 12);
 
             if (value) {
-                // Неактивная - цвет темной границы (нижняя и правая кромка)
+                // Inactive - dark border color (bottom and right edge)
                 const baseColor = UIObject.getClientConfigValue('defaultColor', '#c0c0c0');
                 ctx.fillStyle = UIObject.brightenColor(baseColor, -60);
             } else {
-                // Активная - черная
+                // Active - black
                 ctx.fillStyle = '#000000';
             }
 
-            ctx.fillRect(2, 2, 8, 1); // Верхняя линия
-            ctx.fillRect(2, 2, 1, 8); // Левая линия
-            ctx.fillRect(9, 2, 1, 8); // Правая линия
-            ctx.fillRect(2, 9, 8, 1); // Нижняя линия
+            ctx.fillRect(2, 2, 8, 1); // Top line
+            ctx.fillRect(2, 2, 1, 8); // Left line
+            ctx.fillRect(9, 2, 1, 8); // Right line
+            ctx.fillRect(2, 9, 8, 1); // Bottom line
         }
     }
 
@@ -325,10 +325,10 @@ class Form extends UIObject {
     updatePositionOnResize() {
         if (this.anchorToWindow === 'center') {
             this.setX((window.innerWidth - this.width) / 2);
-            
+
             const availableHeight = window.innerHeight - Form.topOffset - Form.bottomOffset;
             let newY = Form.topOffset + (availableHeight - this.height) / 2;
-            
+
             if (newY < Form.topOffset) newY = Form.topOffset;
             this.setY(newY);
         } else if (this.anchorToWindow === 'bottom-right') {
@@ -344,7 +344,7 @@ class Form extends UIObject {
 
     Draw(container) {
         if (!this.element) {
-            // Сохраняем начальное соотношение сторон для lockAspectRatio
+            // Save initial aspect ratio for lockAspectRatio
             if (this.width > 0 && this.height > 0) {
                 this.initialAspectRatio = this.width / this.height;
             }
@@ -359,11 +359,11 @@ class Form extends UIObject {
             this.element.tabIndex = 0;
             this.element.style.outline = 'none';
 
-            // Добавляем форму в глобальный массив
+            // Add form to global array
             Form._allForms.push(this);
 
-            // Ретро-стиль: объёмная рамка
-            // Используем client_config.json (если загружен) или значение по умолчанию
+            // Retro style: 3D border
+            // Use client_config.json (if loaded) or default value
             const initialBg = UIObject.getClientConfigValue('defaultColor', '#c0c0c0');
             const bgColor = initialBg;
             this.element.style.backgroundColor = bgColor;
@@ -374,7 +374,7 @@ class Form extends UIObject {
             this.element.style.borderBottom = `2px solid ${UIObject.brightenColor(bgColor, -60)}`;
             this.element.style.boxSizing = 'border-box';
 
-            // Асинхронно догружаем конфиг и обновляем цвета, если он ещё не был загружен
+            // Asynchronously load config and update colors if not already loaded
             UIObject.loadClientConfig().then(cfg => {
                 const finalColor = UIObject.getClientConfigValue('defaultColor', bgColor);
                 if (finalColor !== bgColor) {
@@ -386,7 +386,7 @@ class Form extends UIObject {
                 }
             });
 
-            // Создаём заголовок (изначально неактивный - темно-серый)
+            // Create title bar (initially inactive - dark gray)
             this.titleBar = document.createElement('div');
             this.titleBar.style.backgroundColor = '#808080';
             this.titleBar.style.color = '#ffffff';
@@ -399,19 +399,19 @@ class Form extends UIObject {
             this.titleBar.style.justifyContent = 'space-between';
             this.titleBar.style.alignItems = 'center';
 
-            // Текст заголовка
+            // Title text
             this.titleTextElement = document.createElement('span');
             this.titleTextElement.textContent = this.title;
             this.titleBar.appendChild(this.titleTextElement);
 
-            // Контейнер для кнопок
+            // Buttons container
             const buttonsContainer = document.createElement('div');
             buttonsContainer.style.display = 'flex';
             buttonsContainer.style.gap = '2px';
-            buttonsContainer.style.flexShrink = '0'; // Запрещаем сжимать кнопки
-            buttonsContainer.style.marginLeft = 'auto'; // Прижимаем вправо (на всякий случай)
+            buttonsContainer.style.flexShrink = '0'; // Prevent button shrinking
+            buttonsContainer.style.marginLeft = 'auto'; // Align to right (just in case)
 
-            // Базовый стиль для кнопок заголовка (размер/выравнивание и т.п.)
+            // Base style for title buttons (size/alignment etc.)
             const buttonStyle = {
                 width: '18px',
                 height: '18px',
@@ -428,7 +428,7 @@ class Form extends UIObject {
                 cursor: 'default'
             };
 
-            // Функция применения цветов для кнопок заголовка
+            // Function to apply colors for title buttons
             const applyTitleButtonColors = (el, base) => {
                 const light = UIObject.brightenColor(base, 60);
                 const dark = UIObject.brightenColor(base, -60);
@@ -441,7 +441,7 @@ class Form extends UIObject {
                 el.style.cursor = 'default';
             };
 
-            // Кнопка минимизации
+            // Minimize button
             const btnMinimize = document.createElement('button');
             Object.assign(btnMinimize.style, buttonStyle);
             const canvasMin = document.createElement('canvas');
@@ -449,13 +449,13 @@ class Form extends UIObject {
             canvasMin.height = 12;
             const ctxMin = canvasMin.getContext('2d');
             ctxMin.fillStyle = '#000000';
-            ctxMin.fillRect(2, 9, 8, 1); // Горизонтальная линия внизу
+            ctxMin.fillRect(2, 9, 8, 1); // Horizontal line at bottom
             btnMinimize.appendChild(canvasMin);
-            // Применяем 3D-стиль по теме
+            // Apply themed 3D style
             applyTitleButtonColors(btnMinimize, UIObject.getClientConfigValue('defaultColor', initialBg));
             buttonsContainer.appendChild(btnMinimize);
 
-            // Кнопка максимизации
+            // Maximize button
             const btnMaximize = document.createElement('button');
             Object.assign(btnMaximize.style, buttonStyle);
             const canvasMax = document.createElement('canvas');
@@ -463,25 +463,25 @@ class Form extends UIObject {
             canvasMax.height = 12;
             const ctxMax = canvasMax.getContext('2d');
             ctxMax.fillStyle = '#000000';
-            ctxMax.fillRect(2, 2, 8, 1); // Верхняя линия
-            ctxMax.fillRect(2, 2, 1, 8); // Левая линия
-            ctxMax.fillRect(9, 2, 1, 8); // Правая линия
-            ctxMax.fillRect(2, 9, 8, 1); // Нижняя линия
+            ctxMax.fillRect(2, 2, 8, 1); // Top line
+            ctxMax.fillRect(2, 2, 1, 8); // Left line
+            ctxMax.fillRect(9, 2, 1, 8); // Right line
+            ctxMax.fillRect(2, 9, 8, 1); // Bottom line
             btnMaximize.appendChild(canvasMax);
-            // Применяем 3D-стиль по теме
+            // Apply themed 3D style
             applyTitleButtonColors(btnMaximize, UIObject.getClientConfigValue('defaultColor', initialBg));
             buttonsContainer.appendChild(btnMaximize);
 
-            // Сохраняем ссылку на кнопку maximize и её canvas
+            // Save reference to maximize button and its canvas
             this.btnMaximize = btnMaximize;
             this.btnMaximizeCanvas = canvasMax;
 
-            // Применяем блокировку если установлена
+            // Apply lock if set
             if (this.lockAspectRatio) {
                 this.setLockAspectRatio(true);
             }
 
-            // Кнопка закрытия
+            // Close button
             const btnClose = document.createElement('button');
             Object.assign(btnClose.style, buttonStyle);
             const canvasClose = document.createElement('canvas');
@@ -497,14 +497,14 @@ class Form extends UIObject {
             ctxClose.lineTo(3, 9);
             ctxClose.stroke();
             btnClose.appendChild(canvasClose);
-            // Применяем 3D-стиль по теме
+            // Apply themed 3D style
             applyTitleButtonColors(btnClose, UIObject.getClientConfigValue('defaultColor', initialBg));
             buttonsContainer.appendChild(btnClose);
 
             this.titleBar.appendChild(buttonsContainer);
             this.element.appendChild(this.titleBar);
 
-            // Актуализируем цвета кнопок после загрузки client_config (если ещё не загружен)
+            // Update button colors after loading client_config (if not already loaded)
             UIObject.loadClientConfig().then(() => {
                 const base = UIObject.getClientConfigValue('defaultColor', initialBg);
                 applyTitleButtonColors(btnMinimize, base);
@@ -526,7 +526,7 @@ class Form extends UIObject {
                 this.close();
             };
 
-            // Создаём область контента
+            // Create content area
             this.contentArea = document.createElement('div');
             this.contentArea.style.position = 'relative';
             this.contentArea.style.width = '100%';
@@ -534,15 +534,15 @@ class Form extends UIObject {
             this.contentArea.style.boxSizing = 'border-box';
             this.element.appendChild(this.contentArea);
 
-            // Устанавливаем высоту contentArea после добавления в DOM
-            // (когда titleBar.offsetHeight уже доступен)
+            // Set contentArea height after adding to DOM
+            // (when titleBar.offsetHeight is available)
             setTimeout(() => {
                 if (this.contentArea && this.titleBar) {
                     this.contentArea.style.height = 'calc(100% - ' + (this.titleBar.offsetHeight + 0) + 'px)';
                 }
             }, 0);
 
-            // Добавляем перетаскивание формы за заголовок
+            // Add form dragging via title bar
             if (this.movable) {
                 this.titleBar.style.cursor = 'move';
 
@@ -559,10 +559,10 @@ class Form extends UIObject {
                     if (this.isDragging) {
                         this.setX(e.clientX - this.dragOffsetX);
                         let newY = e.clientY - this.dragOffsetY;
-                        
+
                         // Ограничение сверху
                         if (newY < Form.topOffset) newY = Form.topOffset;
-                        
+
                         // Ограничение снизу (чтобы окно не уходило под панель задач)
                         // Разрешаем уходить вниз, но не глубже чем bottomOffset
                         // Или лучше жестко ограничить? "не должны подлезать под меню"
@@ -585,7 +585,7 @@ class Form extends UIObject {
                 });
             }
 
-            // Добавляем изменение размеров формы
+            // Add form resizing
             if (this.resizable) {
                 const resizeBorderSize = 4;
 
@@ -639,9 +639,9 @@ class Form extends UIObject {
                 document.addEventListener('mousemove', (e) => {
                     if (this.isResizing) {
                         if (this.lockAspectRatio) {
-                            // При блокировке пропорций изменяем оба размера пропорционально
-                            // Упрощенная реализация для правого нижнего угла (как было)
-                            // TODO: Добавить поддержку других углов для lockAspectRatio
+                            // When aspect ratio locked, resize both dimensions proportionally
+                            // Simplified implementation for bottom-right corner (as was)
+                            // TODO: Add support for other corners for lockAspectRatio
                             if (this.resizeDirection.right || this.resizeDirection.bottom) {
                                 const newWidth = e.clientX - this.x;
                                 const newHeight = e.clientY - this.y;
@@ -649,9 +649,9 @@ class Form extends UIObject {
                                 let targetWidth = newWidth;
                                 let targetHeight = newHeight;
 
-                                // Определяем что изменяется и вычисляем другое измерение
+                                // Determine what changes and calculate other dimension
                                 if (this.resizeDirection.right && this.resizeDirection.bottom) {
-                                    // Изменяем по углу - берем среднее или по большему изменению
+                                    // Resize by corner - take average or largest change
                                     const widthRatio = newWidth / this.width;
                                     const heightRatio = newHeight / this.height;
 
@@ -675,7 +675,7 @@ class Form extends UIObject {
                             }
                         } else {
                             // Обычное изменение размера без блокировки пропорций
-                            
+
                             // Right
                             if (this.resizeDirection.right) {
                                 const newWidth = e.clientX - this.x;
@@ -737,9 +737,9 @@ class Form extends UIObject {
                             // Top
                             if (this.resizeDirection.top) {
                                 let newY = e.clientY;
-                                // Ограничение сверху
+                                // Top constraint
                                 if (newY < Form.topOffset) newY = Form.topOffset;
-                                
+
                                 const newHeight = (this.y + this.height) - newY;
                                 if (newHeight > 50) {
                                     this.setY(newY);
@@ -749,7 +749,7 @@ class Form extends UIObject {
                                 }
                             }
                         }
-                        // Вызываем onResizing во время изменения размера
+                        // Call onResizing during resize
                         this.onResizing();
                     }
                 });
@@ -758,7 +758,7 @@ class Form extends UIObject {
                     if (this.isResizing) {
                         this.isResizing = false;
                         this.resizeDirection = null;
-                        // Вызываем onResize после завершения изменения размера
+                        // Call onResize after resize completes
                         this.onResize();
                     }
                 });
@@ -769,7 +769,7 @@ class Form extends UIObject {
             container.appendChild(this.element);
         }
 
-        // Добавляем обработчики событий для формы
+        // Add event handlers for form
         this.element.addEventListener('mousedown', (e) => {
             this.activate();
         });
@@ -786,10 +786,10 @@ class Form extends UIObject {
             this.onHover(e);
         });
 
-        // Глобальный обработчик клавиш - срабатывает только для верхней формы
+        // Global key handler - triggers only for top form
         if (!Form._globalKeyHandler) {
             Form._globalKeyHandler = (e) => {
-                // Находим форму с максимальным z
+                // Find form with max z
                 let topForm = null;
                 let maxZ = -1;
                 Form._allForms.forEach(form => {
@@ -799,14 +799,14 @@ class Form extends UIObject {
                     }
                 });
 
-                // Вызываем onKeyPressed только у верхней формы
+                // Call onKeyPressed only on top form
                 if (topForm) {
                     topForm.onKeyPressed(e);
                 }
             };
 
             Form._globalKeyUpHandler = (e) => {
-                // Находим форму с максимальным z
+                // Find form with max z
                 let topForm = null;
                 let maxZ = -1;
                 Form._allForms.forEach(form => {
@@ -816,7 +816,7 @@ class Form extends UIObject {
                     }
                 });
 
-                // Вызываем onKeyReleased только у верхней формы
+                // Call onKeyReleased only on top form
                 if (topForm) {
                     topForm.onKeyReleased(e);
                 }
@@ -826,11 +826,11 @@ class Form extends UIObject {
             document.addEventListener('keyup', Form._globalKeyUpHandler);
         }
 
-        // Сохраняем ссылку на экземпляр формы в элементе
+        // Save reference to form instance in element
         this.element._formInstance = this;
         this.element.setAttribute('data-is-form', 'true');
 
-        // Устанавливаем z-index для новой формы
+        // Set z-index for new form
         this.z = ++Form._globalZIndex;
         this.element.style.zIndex = this.z;
 
@@ -863,7 +863,7 @@ class Form extends UIObject {
             window.dispatchEvent(new CustomEvent('form-minimized', { detail: { form: this } }));
         }
     }
-    
+
     restore() {
         if (this.element) {
             this.element.style.display = '';
@@ -888,7 +888,7 @@ class Form extends UIObject {
             this.restoreY = this.y;
             this.restoreWidth = this.width;
             this.restoreHeight = this.height;
-            
+
             this.setX(0);
             this.setY(Form.topOffset);
             this.setWidth(window.innerWidth);
@@ -938,19 +938,19 @@ class Form extends UIObject {
     }
 }
 
-// Статические свойства для управления формами
+// Static properties for form management
 Form._globalZIndex = 0;
-Form._allForms = []; // Массив всех созданных форм
-Form.topOffset = 0; // Отступ сверху (например, для меню)
-Form.bottomOffset = 0; // Отступ снизу (например, для панели задач)
+Form._allForms = []; // Array of all created forms
+Form.topOffset = 0; // Top offset (e.g. for menu)
+Form.bottomOffset = 0; // Bottom offset (e.g. for taskbar)
 
-// Активируем самую верхнюю форму после загрузки страницы
+// Activate top form after page load
 if (typeof window !== 'undefined') {
     window.addEventListener('DOMContentLoaded', () => {
-        // Даем время для создания всех форм
+        // Give time for all forms creation
         setTimeout(() => {
             if (Form._allForms.length > 0) {
-                // Находим форму с максимальным z
+                // Find form with max z
                 let topForm = null;
                 let maxZ = -1;
                 Form._allForms.forEach(form => {
@@ -960,7 +960,7 @@ if (typeof window !== 'undefined') {
                     }
                 });
 
-                // Активируем верхнюю форму
+                // Activate top form
                 if (topForm) {
                     topForm.activate();
                 }
@@ -1000,7 +1000,7 @@ class Button extends UIObject {
             this.element = document.createElement('button');
             this.element.textContent = this.caption;
 
-            // Если parentElement не задан, используем абсолютное позиционирование
+            // If parentElement is not set, use absolute positioning
             if (!this.parentElement) {
                 this.element.style.position = 'absolute';
                 this.element.style.left = this.x + 'px';
@@ -1010,7 +1010,7 @@ class Button extends UIObject {
                 this.element.style.zIndex = this.z;
             }
 
-            // Ретро-стиль кнопки (цвета из client_config)
+            // Retro button style (colors from client_config)
             const btnBase = UIObject.getClientConfigValue('defaultColor', '#c0c0c0');
             const btnLight = UIObject.brightenColor(btnBase, 60);
             const btnDark = UIObject.brightenColor(btnBase, -60);
@@ -1025,7 +1025,7 @@ class Button extends UIObject {
             this.element.style.outline = 'none';
             this.element.style.boxSizing = 'border-box';
 
-            // Догружаем конфиг и при необходимости актуализируем цвета
+            // Load config and update colors if needed
             UIObject.loadClientConfig().then(() => {
                 const base = UIObject.getClientConfigValue('defaultColor', btnBase);
                 const light = UIObject.brightenColor(base, 60);
@@ -1037,7 +1037,7 @@ class Button extends UIObject {
                 this.element.style.borderBottom = `2px solid ${dark}`;
             });
 
-            // Эффект нажатия
+            // Press effect
             this.element.addEventListener('mousedown', (e) => {
                 this.element.style.borderTop = '2px solid #808080';
                 this.element.style.borderLeft = '2px solid #808080';
@@ -1045,7 +1045,7 @@ class Button extends UIObject {
                 this.element.style.borderBottom = '2px solid #ffffff';
                 this.onMouseDown(e);
 
-                // Обработчик отпускания кнопки мыши где угодно
+                // Handler for mouse up anywhere
                 const mouseUpHandler = (e) => {
                     this.element.style.borderTop = '2px solid #ffffff';
                     this.element.style.borderLeft = '2px solid #ffffff';
@@ -1141,7 +1141,7 @@ class TextBox extends UIObject {
             this.element.placeholder = this.placeholder;
             this.element.readOnly = this.readOnly;
 
-            // Добавляем уникальный id для устранения предупреждения браузера
+            // Add unique id to eliminate browser warning
             this.element.id = 'textbox_' + Math.random().toString(36).substr(2, 9);
             this.element.name = this.element.id;
 
@@ -1149,7 +1149,7 @@ class TextBox extends UIObject {
                 this.element.maxLength = this.maxLength;
             }
 
-            // Позиционирование
+            // Positioning
             if (!this.parentElement) {
                 this.element.style.position = 'absolute';
                 this.element.style.left = this.x + 'px';
@@ -1160,7 +1160,7 @@ class TextBox extends UIObject {
             this.element.style.width = this.width + 'px';
             this.element.style.height = this.height + 'px';
 
-            // Ретро-стиль текстового поля: белый фон, границы по теме из client_config
+            // Retro textbox style: white background, themed borders from client_config
             const tbBase = UIObject.getClientConfigValue('defaultColor', '#c0c0c0');
             const tbLight = UIObject.brightenColor(tbBase, 60);
             const tbDark = UIObject.brightenColor(tbBase, -60);
@@ -1175,7 +1175,7 @@ class TextBox extends UIObject {
             this.element.style.outline = 'none';
             this.element.style.boxSizing = 'border-box';
 
-            // Догружаем конфиг и обновляем при необходимости
+            // Load config and update if needed
             UIObject.loadClientConfig().then(() => {
                 const base = UIObject.getClientConfigValue('defaultColor', tbBase);
                 const light = UIObject.brightenColor(base, 60);
@@ -1187,7 +1187,7 @@ class TextBox extends UIObject {
                 this.element.style.borderBottom = `2px solid ${light}`;
             });
 
-            // События
+            // Events
             this.element.addEventListener('input', (e) => {
                 this.text = e.target.value;
             });

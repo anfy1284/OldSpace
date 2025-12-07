@@ -1,10 +1,10 @@
-// Используем функцию getContentType из глобального контекста через globalRoot
+// Use getContentType from global context via globalRoot
 const formsGlobal = require('./globalServerContext');
 const globalRoot = require('../drive_root/globalServerContext');
 const fs = require('fs');
 const path = require('path');
 
-// Загружаем конфиг приложения (whitelist публичных файлов)
+// Load app config (public files whitelist)
 let appConfig = { publicFiles: [] };
 try {
 	const cfgPath = path.join(__dirname, 'server_config.json');
@@ -13,7 +13,7 @@ try {
 	console.error('[drive_forms] Failed to read server_config.json:', e.message);
 }
 
-//Загружаем конфиг apps.json
+// Load apps.json config
 let appsConfig = { apps: [] };
 try {
 	const appsCfgPath = path.join(__dirname, 'apps.json');
@@ -27,7 +27,7 @@ const ALLOWED = new Set(appConfig.publicFiles || []);
 
 function safeJoin(baseDir, relativePath) {
 	const norm = path.normalize(relativePath).replace(/^[/\\]+/, '');
-	// запретить выход за пределы директории
+	// prevent directory traversal
 	if (norm.includes('..')) return null;
 	return path.join(baseDir, norm);
 }
@@ -41,26 +41,25 @@ function loadApp(name) {
 }
 
 
-// Вспомогательная функция для динамического вызова метода приложения
-// Вспомогательная функция для динамического вызова метода приложения
+// Helper function for dynamic app method invocation
 function invokeAppMethod(appName, methodName, params, sessionID, callback, req, res) {
-	// Путь к серверному js-файлу приложения
+	// Path to app server.js
 	const appEntry = appsConfig.apps.find(a => a.name === appName);
 	if (!appEntry) return callback(new Error('App not found'));
 	const appServerPath = path.join(__dirname, '..', 'apps', appName, 'server.js');
 	if (!fs.existsSync(appServerPath)) return callback(new Error('App server.js not found'));
 	let appModule;
 	try {
-		// Удаляем из require cache для hot-reload
+		// Remove from require cache for hot-reload
 		delete require.cache[require.resolve(appServerPath)];
 		appModule = require(appServerPath);
 	} catch (e) {
 		return callback(new Error('Failed to load app server.js: ' + e.message));
 	}
 	if (typeof appModule[methodName] !== 'function') return callback(new Error('Method not found in app'));
-	// Вызов функции с sessionID отдельным параметром
+	// Call function with sessionID as separate parameter
 	try {
-		// params - объект, sessionID - строка, req, res - для SSE
+		// params is object, sessionID is string, req, res for SSE
 		const result = appModule[methodName](params, sessionID, req, res);
 		if (result && typeof result.then === 'function') {
 			// async/Promise
@@ -74,46 +73,46 @@ function invokeAppMethod(appName, methodName, params, sessionID, callback, req, 
 }
 
 function handleRequest(req, res, appDir, appAlias) {
-	// Обработка ресурсов и API-эндпоинтов
+	// Processing resources and API endpoints
 	console.log('[drive_forms/handleRequest] Request:', req.method, req.url, 'appAlias:', appAlias);
 	try {
-		// --- Endpoint для GET-запросов с параметрами (для SSE) - ПРОВЕРЯЕМ ПЕРВЫМ ---
+		// --- Endpoint for GET requests with parameters (for SSE) - CHECK FIRST ---
 		if (req.method === 'GET' && req.url.startsWith(`/${appAlias}/`) && !req.url.startsWith(`/${appAlias}/res/`) && req.url !== `/${appAlias}/loadApps`) {
 			const urlObj = new URL(req.url, `http://${req.headers.host}`);
 			const pathParts = urlObj.pathname.split('/').filter(Boolean);
-			
+
 			console.log('[drive_forms] GET request:', req.url, 'pathParts:', pathParts);
-			
-			// Формат: /{appAlias}/{appName}/{methodName}?params
-			// pathParts будет ['appAlias', 'appName', 'methodName']
+
+			// Format: /{appAlias}/{appName}/{methodName}?params
+			// pathParts will be ['appAlias', 'appName', 'methodName']
 			if (pathParts.length >= 3 && pathParts[0] === appAlias) {
 				const appName = pathParts[1];
 				const methodName = pathParts[2];
-				
+
 				console.log('[drive_forms] Invoking:', appName, methodName);
-				
-				// Извлекаем параметры из query string
+
+				// Extract params from query string
 				const params = {};
 				urlObj.searchParams.forEach((value, key) => {
 					params[key] = value;
 				});
-				
-				// Извлекаем sessionID из cookie
+
+				// Extract sessionID from cookie
 				let sessionID = null;
 				if (req.headers && req.headers.cookie) {
 					const match = req.headers.cookie.match(/(?:^|; )sessionID=([^;]+)/);
 					if (match) sessionID = decodeURIComponent(match[1]);
 				}
-				
+
 				invokeAppMethod(appName, methodName, params, sessionID, (err, result) => {
 					if (err) {
 						console.error('[drive_forms] Error invoking method:', err.message);
 						res.writeHead(500, { 'Content-Type': 'application/json' });
 						res.end(JSON.stringify({ error: err.message }));
 					} else {
-						// Проверяем, не обработан ли запрос внутри метода (SSE, etc)
+						// Check if request handled inside method (SSE, etc)
 						if (result && (result._sse || result._handled)) {
-							// Соединение уже обработано внутри метода, не закрываем
+							// Connection already handled inside method, don't close
 							console.log('[drive_forms] Request handled by app method');
 							return;
 						}
@@ -124,12 +123,12 @@ function handleRequest(req, res, appDir, appAlias) {
 				return;
 			}
 		}
-		
-		// Универсальная отдача ресурсов: /<appAlias>/res/public/..., /<appAlias>/res/protected/...
+
+		// Universal resource serving: /<appAlias>/res/public/..., /<appAlias>/res/protected/...
 		if (req.url.startsWith(`/${appAlias}/res/`)) {
 			const parts = req.url.split('/').filter(Boolean); // ['', appAlias, 'res', 'public', ...] => ['appAlias', 'res', 'public', ...]
 			if (parts.length >= 4) {
-				const resType = parts[2]; // public или protected
+				const resType = parts[2]; // public or protected
 				const relPath = parts.slice(3).join(path.sep);
 				let filePath;
 				if (resType === 'public') {
@@ -157,14 +156,14 @@ function handleRequest(req, res, appDir, appAlias) {
 						res.end('404 Not Found');
 						return;
 					}
-					// Проверка доступа по sessionID (заглушка)
+					// Check access by sessionID (stub)
 					let sessionID = null;
 					if (req.headers && req.headers.cookie) {
 						const match = req.headers.cookie.match(/(?:^|; )sessionID=([^;]+)/);
 						if (match) sessionID = decodeURIComponent(match[1]);
 					}
-					// TODO: реализовать реальную проверку доступа
-					// Сейчас доступ всегда запрещён
+					// TODO: Implement real access check
+					// Currently access is always forbidden
 					const checkProtectedAccess = (sessionId, filePath) => false;
 					if (!checkProtectedAccess(sessionID, filePath)) {
 						res.writeHead(403, { 'Content-Type': 'text/plain' });
@@ -188,9 +187,9 @@ function handleRequest(req, res, appDir, appAlias) {
 			res.end('404 Not Found');
 			return;
 		}
-		// --- Endpoint для получения клиентских скриптов доступных приложений ---
+		// --- Endpoint for loading available apps client scripts ---
 		if ((req.method === 'POST' || req.method === 'GET') && req.url === `/${appAlias}/loadApps`) {
-			// Получаем пользователя по sessionID
+			// Get user by sessionID
 			let sessionID = null;
 			if (req.headers && req.headers.cookie) {
 				const match = req.headers.cookie.match(/(?:^|; )sessionID=([^;]+)/);
@@ -213,11 +212,11 @@ function handleRequest(req, res, appDir, appAlias) {
 			return;
 		}
 
-		// --- Endpoint для загрузки файлов приложений через POST ---
+		// --- Endpoint for uploading app files via POST ---
 		if (req.method === 'POST' && req.url === `/${appAlias}/upload`) {
-			// Ожидаем multipart/form-data с app, method, file и другими полями
+			// Expect multipart/form-data with app, method, file and other fields
 			const multer = require('multer');
-			const upload = multer({ storage: multer.memoryStorage() }); // В памяти, чтобы передать в метод
+			const upload = multer({ storage: multer.memoryStorage() }); // In memory to pass to method
 			upload.single('file')(req, res, (err) => {
 				if (err) {
 					res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -249,7 +248,7 @@ function handleRequest(req, res, appDir, appAlias) {
 			return;
 		}
 
-		// --- Endpoint для вызова метода приложения через POST ---
+		// --- Endpoint for calling app method via POST ---
 		if (req.method === 'POST' && req.url === `/${appAlias}/call`) {
 			let body = '';
 			req.on('data', chunk => { body += chunk; });
@@ -287,7 +286,7 @@ function handleRequest(req, res, appDir, appAlias) {
 			return;
 		}
 
-		// Всё остальное - 404
+		// Everything else - 404
 		res.writeHead(404, { 'Content-Type': 'text/plain' });
 		res.end('Not Found');
 	} catch (e) {

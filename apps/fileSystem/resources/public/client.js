@@ -6,11 +6,11 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ app, method, params })
         })
-        .then(r => r.json())
-        .then(data => {
-            if ('error' in data) throw new Error(data.error);
-            return data.result;
-        });
+            .then(r => r.json())
+            .then(data => {
+                if ('error' in data) throw new Error(data.error);
+                return data.result;
+            });
     }
 
     const form = new Form();
@@ -68,18 +68,16 @@
     fileList.style.padding = '5px';
     fileList.style.overflowY = 'auto';
 
-    // Drag and drop zone
-    const dropZone = document.createElement('div');
-    dropZone.style.border = '2px dashed #808080';
-    dropZone.style.padding = '20px';
-    dropZone.style.textAlign = 'center';
-    dropZone.style.marginTop = '10px';
-    dropZone.style.backgroundColor = '#f0f0f0';
-    dropZone.textContent = 'Drop files here to upload';
+    // prevent default browser behavior for drag and drop globally
+    window.addEventListener('dragover', function (e) {
+        e.preventDefault();
+    }, false);
+    window.addEventListener('drop', function (e) {
+        e.preventDefault();
+    }, false);
 
     filePanel.appendChild(toolbar);
     filePanel.appendChild(fileList);
-    filePanel.appendChild(dropZone);
 
     container.appendChild(treePanel);
     container.appendChild(filePanel);
@@ -104,20 +102,20 @@
         input.click();
     };
 
-    // Drag and drop
-    dropZone.addEventListener('dragover', (e) => {
+    // Drag and drop for file panel
+    filePanel.addEventListener('dragover', (e) => {
         e.preventDefault();
-        dropZone.style.backgroundColor = '#e0e0e0';
+        e.stopPropagation(); // Stop bubbling so window listener doesn't interfere if needed, though preventDefault is key
+        // Optional: Add visual feedback for drop zone if needed, but user requested "not visually distinct" usually means mostly invisible
+        // or just subtle. The requirement was "not be allocated separately". 
     });
 
-    dropZone.addEventListener('dragleave', () => {
-        dropZone.style.backgroundColor = '#f0f0f0';
-    });
-
-    dropZone.addEventListener('drop', (e) => {
+    filePanel.addEventListener('drop', (e) => {
         e.preventDefault();
-        dropZone.style.backgroundColor = '#f0f0f0';
-        uploadFiles(e.dataTransfer.files);
+        e.stopPropagation();
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            uploadFiles(e.dataTransfer.files);
+        }
     });
 
     async function loadTree() {

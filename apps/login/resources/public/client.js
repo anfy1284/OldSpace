@@ -1,5 +1,5 @@
-//Используем классы из файла UI_classes.js
-//Для ввода текста используется TextBox
+//Use classes from UI_classes.js file
+//TextBox is used for text input
 const loginForm = new Form()
 loginForm.setTitle('Login');
 loginForm.setWidth(300);
@@ -60,7 +60,7 @@ loginForm.Draw = function (parent) {
                 loginForm.txtUsername.setText(result);
             })
             .catch(err => {
-                console.error('Ошибка:', err);
+                console.error('Error:', err);
             });
     };
 
@@ -73,7 +73,7 @@ loginForm.Draw = function (parent) {
                 location.reload();
             })
             .catch(err => {
-                console.error('Ошибка: ' + err.message);
+                console.error('Error: ' + err.message);
             });
     };
 
@@ -88,21 +88,21 @@ loginForm.reDraw = function () {
     const width = this.contentArea.clientWidth;
     const height = this.contentArea.clientHeight;
 
-    // Количество элементов: 2 label + 2 textbox + 3 button + 6 gap + 2 padding
+    // Element count: 2 label + 2 textbox + 3 button + 6 gap + 2 padding
     const numLabels = 2;
     const numTextboxes = 2;
     const numButtons = 3;
     const numGaps = 6;
     const numPaddings = 2;
 
-    // Пропорционально высоте контейнера
+    // Proportional to container height
     const minPadding = 16;
     const minGap = 8;
     const minLabelHeight = 16;
     const minElementHeight = 26;
     const minFontSize = 13;
 
-    // Сумма минимальных высот
+    // Sum of minimum heights
     const minTotal = minPadding * 2 + minGap * numGaps + minLabelHeight * numLabels + minElementHeight * (numTextboxes + numButtons);
     const scale = Math.max(height / minTotal, 1);
 

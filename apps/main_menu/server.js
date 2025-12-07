@@ -1,11 +1,11 @@
-// Серверные методы main_menu
+// Server methods main_menu
 
 async function getMainMenuCommands(appsJsonUrl = '/drive_forms/apps.json') {
     const fs = require('fs').promises;
     const path = require('path');
     const result = [];
     try {
-        // абсолютный путь к apps.json
+        // absolute path to apps.json
         const appsJsonPath = path.resolve(__dirname, '../../drive_forms/apps.json');
         const appsData = JSON.parse(await fs.readFile(appsJsonPath, 'utf8'));
         if (!appsData.apps) return result;
@@ -15,7 +15,7 @@ async function getMainMenuCommands(appsJsonUrl = '/drive_forms/apps.json') {
             try {
                 const cfg = JSON.parse(await fs.readFile(configPath, 'utf8'));
                 if (cfg.mainMenuCommands) {
-                    // Внедряем имя приложения в команды
+                    // Inject app name into commands
                     const injectAppName = (items) => {
                         if (!items) return;
                         for (const item of items) {
@@ -27,16 +27,16 @@ async function getMainMenuCommands(appsJsonUrl = '/drive_forms/apps.json') {
                             }
                         }
                     };
-                    
+
                     cfg.mainMenuCommands.forEach(cmd => {
                         if (cmd.items) injectAppName(cmd.items);
                     });
 
                     result.push(...cfg.mainMenuCommands);
                 }
-            } catch (e) {}
+            } catch (e) { }
         }
-    } catch (e) {}
+    } catch (e) { }
     return result;
 }
 

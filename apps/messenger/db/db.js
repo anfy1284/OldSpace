@@ -110,7 +110,7 @@ const models = [
             },
             customName: {
                 type: 'STRING',
-                allowNull: true, // Персональное название чата для этого пользователя
+                allowNull: true, // Personal chat name for this user
             },
             joinedAt: {
                 type: 'DATE',

@@ -1,45 +1,45 @@
-// Получаем функцию getContentType из глобального контекста
+// Get getContentType from global context
 const { getContentType } = require('./globalServerContext');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const qs = require('querystring');
 
-// Сессии и клиенты теперь через sessionManager
+// Sessions and clients are now handled via sessionManager
 const { getOrCreateSession } = require('./db/sessionManager');
 
-// Универсальная функция для поиска и запуска init.js
+// Universal function to find and run init.js
 function runInitIfExists(dir) {
     const initPath = path.join(dir, 'init.js');
     if (fs.existsSync(initPath)) {
         try {
             require(initPath);
         } catch (e) {
-            console.error(`[init] Ошибка запуска ${initPath}:`, e);
+            console.error(`[init] Error running ${initPath}:`, e);
         }
     }
 }
-// ...existing code...
-// Настройки приложения (директория и псевдоним берутся из конфигурации)
+
+// App settings (directory and alias taken from config)
 
 let config;
 let appAlias;
 let appDir;
 let appHandler;
 try {
-    // 1. Инициализация базового уровня
+    // 1. Initialize base level
     runInitIfExists(path.join(__dirname));
 
     config = require(path.join(__dirname, '..', 'server.config.json'));
     appAlias = config.appAlias;
     appDir = path.join(__dirname, '..', config.appDir);
 
-    // 2. Инициализация прикладного уровня
+    // 2. Initialize application level
     runInitIfExists(appDir);
 
     appHandler = require(path.join(appDir, config.appHandler));
 
-    // 3. Инициализация всех приложений из apps.json (если есть)
+    // 3. Initialize all applications from apps.json (if present)
     const appsJsonPath = path.join(appDir, 'apps.json');
     if (fs.existsSync(appsJsonPath)) {
         const appsConfig = JSON.parse(fs.readFileSync(appsJsonPath, 'utf8'));
@@ -59,9 +59,9 @@ try {
     process.exit(1);
 }
 
-// Проверка доступа к защищённым ресурсам (заглушка)
+// Check access to protected resources (stub)
 function checkProtectedAccess(sessionId, filePath) {
-    // TODO: реализовать реальную проверку доступа по sessionId и filePath
+    // TODO: Implement real access check by sessionId and filePath
     return false;
 }
 
@@ -69,7 +69,7 @@ async function handleRequest(req, res) {
     console.log('[drive_root] Request:', req.method, req.url);
     await getOrCreateSession(req, res);
 
-    // Обработка favicon
+    // Handle favicon
     if (req.url === '/favicon.ico' || req.url === '/favicon.svg') {
         const faviconPath = path.join(__dirname, 'resources', 'public', 'favicon.svg');
         if (fs.existsSync(faviconPath)) {
@@ -89,12 +89,12 @@ async function handleRequest(req, res) {
         return;
     }
 
-    // Универсальная отдача ресурсов: /res/public/..., /res/protected/...
+    // Universal resource serving: /res/public/..., /res/protected/...
     if (req.url.startsWith('/res/')) {
         const urlPath = req.url.split('?')[0];
         const parts = urlPath.split('/').filter(Boolean); // ['', 'res', 'public', ...] => ['res', 'public', ...]
         if (parts.length >= 3) {
-            const resType = parts[1]; // public или protected
+            const resType = parts[1]; // public or protected
             const relPath = parts.slice(2).join(path.sep);
             let filePath;
             if (resType === 'public') {
@@ -104,7 +104,7 @@ async function handleRequest(req, res) {
                     res.end('404 Not Found');
                     return;
                 }
-                // Отдаём файл без проверки
+                // Serve file without check
                 const contentType = getContentType(filePath);
                 fs.readFile(filePath, (err, data) => {
                     if (err) {
@@ -123,7 +123,7 @@ async function handleRequest(req, res) {
                     res.end('404 Not Found');
                     return;
                 }
-                // Проверка доступа по sessionId (из cookie)
+                // Check access by sessionId (from cookie)
                 let sessionId = null;
                 if (req.headers && req.headers.cookie) {
                     const match = req.headers.cookie.match(/(?:^|; )sessionId=([^;]+)/i);
@@ -134,7 +134,7 @@ async function handleRequest(req, res) {
                     res.end('Forbidden');
                     return;
                 }
-                // Отдаём файл
+                // Serve file
                 const contentType = getContentType(filePath);
                 fs.readFile(filePath, (err, data) => {
                     if (err) {
@@ -153,7 +153,7 @@ async function handleRequest(req, res) {
         return;
     }
 
-    // Обработка статики приложений: /apps/<appName>/resources/<type>/...
+    // Handle app static files: /apps/<appName>/resources/<type>/...
     if (req.url.startsWith('/apps/')) {
         const urlPath = req.url.split('?')[0];
         const parts = urlPath.split('/').filter(Boolean); // ['', 'apps', 'appName', 'resources', 'type', ...] => ['apps', 'appName', 'resources', 'type', ...]
@@ -166,7 +166,7 @@ async function handleRequest(req, res) {
             const resType = parts[3];
             const relPath = parts.slice(4).join(path.sep);
 
-            // Путь к папке apps относительно drive_root
+            // Path to apps folder relative to drive_root
             const appsDir = path.join(__dirname, '..', 'apps');
 
             if (resType === 'public') {
@@ -194,7 +194,7 @@ async function handleRequest(req, res) {
         }
     }
 
-    // ...остальная логика...
+    // ...remaining logic...
     if (req.url === '/') {
         fs.readFile(path.join(appDir, config.appIndexPage), 'utf8', (err, data) => {
             if (err) {

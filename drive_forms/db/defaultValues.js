@@ -1,4 +1,4 @@
-// Уровень для предопределенных значений drive_forms
+// Level for default values of drive_forms
 const LEVEL = 'forms';
 
 const defaultValuesData = {
@@ -12,29 +12,29 @@ const defaultValuesData = {
   ]
 };
 
-// Добавляем level к каждой записи и проверяем уникальность id
+// Add level to each record and check id uniqueness
 function processDefaultValues(data, level) {
   const result = {};
   const allIds = new Set();
-  
+
   for (const [entity, records] of Object.entries(data)) {
     if (!Array.isArray(records)) {
       result[entity] = records;
       continue;
     }
-    
-    // Проверяем уникальность id в пределах уровня (все таблицы)
+
+    // Check id uniqueness within the level (all tables)
     for (const record of records) {
       if (record.id !== undefined) {
         if (allIds.has(record.id)) {
-          console.error(`[defaultValues] ОШИБКА: Дублирующийся id=${record.id} в таблице "${entity}" (id должен быть уникален в пределах уровня "${level}")`);
+          console.error(`[defaultValues] ERROR: Duplicate id=${record.id} in table "${entity}" (id must be unique within level "${level}")`);
         }
         allIds.add(record.id);
       } else {
-        console.warn(`[defaultValues] ПРЕДУПРЕЖДЕНИЕ: Запись в "${entity}" не имеет поля id`);
+        console.warn(`[defaultValues] WARNING: Record in "${entity}" does not have an id field`);
       }
     }
-    
+
     result[entity] = records.map(record => ({
       ...record,
       _level: level

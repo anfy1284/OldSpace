@@ -2,8 +2,8 @@ const eventBus = require('../../drive_root/eventBus');
 const global = require('../../drive_root/globalServerContext');
 const { modelsDB } = global;
 
-// Хранилище SSE-клиентов: Map<chatId, Set<{res, userId, clientId}>>
-// Храним в global, чтобы не терялось при hot-reload модуля
+// SSE clients storage: Map<chatId, Set<{res, userId, clientId}>>
+// Store in global to prevent loss during module hot-reload
 if (!global.messengerSseClients) {
     global.messengerSseClients = new Map();
     console.log('[messenger] Initialized global SSE clients Map');
@@ -11,40 +11,40 @@ if (!global.messengerSseClients) {
 const sseClients = global.messengerSseClients;
 
 eventBus.on('userCreated', async (user, { systems, roles, sessionID } = {}) => {
-    // Валидация входных данных события
+    // Event input data validation
     if (!user || typeof user !== 'object' || !user.id) {
-        console.error('[messenger] userCreated: некорректный объект пользователя', user);
+        console.error('[messenger] userCreated: invalid user object', user);
         return;
     }
     if (!modelsDB || !modelsDB.Users || !modelsDB.Messenger_Chats || !modelsDB.Messenger_ChatMembers) {
-        console.warn('[messenger] Модели недоступны при создании пользователя');
+        console.warn('[messenger] Models unavailable during user creation');
         return;
     }
 
     try {
         const sequelize = modelsDB.Users.sequelize;
-        // ОТДЕЛЬНАЯ транзакция для создания чатов (независимая от создания пользователя)
+        // SEPARATE transaction for chat creation (independent of user creation)
         await sequelize.transaction(async (t) => {
-            // 1. Создать приватные чаты с каждым существующим пользователем
-            const existingUsers = await modelsDB.Users.findAll({ 
+            // 1. Create private chats with each existing user
+            const existingUsers = await modelsDB.Users.findAll({
                 where: { id: { [require('sequelize').Op.ne]: user.id } },
                 transaction: t
             });
-            
+
             for (const existingUser of existingUsers) {
-                // Проверяем, нет ли уже чата между этими пользователями
+                // Check if chat already exists between these users
                 const memberships = await modelsDB.Messenger_ChatMembers.findAll({
                     where: { userId: [user.id, existingUser.id] },
                     transaction: t
                 });
-                
+
                 const chatMap = new Map();
                 for (const m of memberships) {
                     const arr = chatMap.get(m.chatId) || [];
                     arr.push(m.userId);
                     chatMap.set(m.chatId, arr);
                 }
-                
+
                 let hasPrivate = false;
                 for (const members of chatMap.values()) {
                     const set = new Set(members);
@@ -53,26 +53,26 @@ eventBus.on('userCreated', async (user, { systems, roles, sessionID } = {}) => {
                         break;
                     }
                 }
-                
+
                 if (!hasPrivate) {
                     try {
                         await createTwoUserChat({ user1: user, user2: existingUser }, null, t);
-                        console.log(`[messenger] Создан приватный чат: ${user.name} ↔ ${existingUser.name}`);
+                        console.log(`[messenger] Private chat created: ${user.name} ↔ ${existingUser.name}`);
                     } catch (chatError) {
-                        console.error(`[messenger] Ошибка создания чата между ${user.name} и ${existingUser.name}:`, chatError.message);
+                        console.error(`[messenger] Error creating chat between ${user.name} and ${existingUser.name}:`, chatError.message);
                     }
                 }
             }
 
-            // 2. Добавить нового пользователя в общий чат "Local chat" из defaultValuesCache
+            // 2. Add new user to "Local chat" from defaultValuesCache
             const localChat = global.getDefaultValue('messenger', 'Messenger_Chats', 1);
             if (localChat) {
-                // Проверяем, не состоит ли уже в чате
+                // Check if already in chat
                 const existing = await modelsDB.Messenger_ChatMembers.findOne({
                     where: { chatId: localChat.id, userId: user.id },
                     transaction: t
                 });
-                
+
                 if (!existing) {
                     try {
                         await modelsDB.Messenger_ChatMembers.create({
@@ -83,36 +83,36 @@ eventBus.on('userCreated', async (user, { systems, roles, sessionID } = {}) => {
                             joinedAt: new Date(),
                             isActive: true,
                         }, { transaction: t });
-                        console.log(`[messenger] Пользователь ${user.name} добавлен в Local chat`);
+                        console.log(`[messenger] User ${user.name} added to Local chat`);
                     } catch (chatError) {
-                        console.error(`[messenger] Ошибка добавления пользователя ${user.name} в Local chat:`, chatError.message);
+                        console.error(`[messenger] Error adding user ${user.name} to Local chat:`, chatError.message);
                     }
                 }
             }
         });
     } catch (e) {
-        console.error('[messenger] Ошибка обработки userCreated:', e.message);
+        console.error('[messenger] userCreated handling error:', e.message);
     }
 });
 
 function onLoad(params, sessionID) {
-    // Пока пустая, можно использовать для инициализации
+    // Empty for now, can be used for initialization
     return { success: true };
 }
 
 async function loadChats(params, sessionID) {
     if (!modelsDB || !modelsDB.Messenger_Chats || !modelsDB.Messenger_ChatMembers) {
-        return { error: 'Модели мессенджера недоступны' };
+        return { error: 'Messenger models unavailable' };
     }
 
-    // Получаем пользователя из сессии (await!)
+    // Get user from session (await!)
     const user = await global.getUserBySessionID(sessionID);
     if (!user) {
-        return { error: 'Пользователь не авторизован' };
+        return { error: 'User not authorized' };
     }
 
     try {
-        // Находим все чаты, в которых состоит пользователь
+        // Find all chats where user is a member
         const memberships = await modelsDB.Messenger_ChatMembers.findAll({
             where: { userId: user.id, isActive: true },
             include: [{
@@ -132,39 +132,39 @@ async function loadChats(params, sessionID) {
 
         return { chats };
     } catch (e) {
-        console.error('[messenger] Ошибка loadChats:', e.message);
-        return { error: 'Ошибка загрузки чатов: ' + e.message };
+        console.error('[messenger] loadChats error:', e.message);
+        return { error: 'Chats loading error: ' + e.message };
     }
 }
 
 async function loadMessages(params, sessionID) {
     const { chatId } = params || {};
-    
+
     if (!chatId) {
-        return { error: 'Не указан chatId' };
-    }
-    
-    if (!modelsDB || !modelsDB.Messenger_Messages || !modelsDB.Messenger_ChatMembers) {
-        return { error: 'Модели мессенджера недоступны' };
+        return { error: 'chatId not specified' };
     }
 
-    // Получаем пользователя из сессии
+    if (!modelsDB || !modelsDB.Messenger_Messages || !modelsDB.Messenger_ChatMembers) {
+        return { error: 'Messenger models unavailable' };
+    }
+
+    // Get user from session
     const user = await global.getUserBySessionID(sessionID);
     if (!user) {
-        return { error: 'Пользователь не авторизован' };
+        return { error: 'User not authorized' };
     }
 
     try {
-        // Проверяем, что пользователь состоит в чате
+        // Check if user is in chat
         const membership = await modelsDB.Messenger_ChatMembers.findOne({
             where: { chatId, userId: user.id, isActive: true }
         });
-        
+
         if (!membership) {
-            return { error: 'Доступ к чату запрещён' };
+            return { error: 'Chat access denied' };
         }
 
-        // Загружаем сообщения чата с информацией об авторах
+        // Load chat messages with author info
         const messages = await modelsDB.Messenger_Messages.findAll({
             where: { chatId },
             include: [{
@@ -173,7 +173,7 @@ async function loadMessages(params, sessionID) {
                 attributes: ['id', 'name']
             }],
             order: [['createdAt', 'ASC']],
-            limit: 100 // Последние 100 сообщений
+            limit: 100 // Last 100 messages
         });
 
         const formattedMessages = messages.map(m => ({
@@ -187,102 +187,102 @@ async function loadMessages(params, sessionID) {
 
         return { messages: formattedMessages, chatName: membership.customName };
     } catch (e) {
-        console.error('[messenger] Ошибка loadMessages:', e.message);
-        return { error: 'Ошибка загрузки сообщений: ' + e.message };
+        console.error('[messenger] loadMessages error:', e.message);
+        return { error: 'Messages loading error: ' + e.message };
     }
 }
 
-// SSE подписка на обновления чата
+// SSE subscription to chat updates
 function subscribeToChat(params, sessionID, req, res) {
     let { chatId } = params || {};
-    chatId = parseInt(chatId); // Приводим к числу
-    
+    chatId = parseInt(chatId); // Cast to number
+
     if (!chatId) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Не указан chatId' }));
-        return { _handled: true };
-    }
-    
-    if (!modelsDB || !modelsDB.Messenger_ChatMembers) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Модели мессенджера недоступны' }));
+        res.end(JSON.stringify({ error: 'chatId not specified' }));
         return { _handled: true };
     }
 
-    // Асинхронная проверка доступа и установка SSE
+    if (!modelsDB || !modelsDB.Messenger_ChatMembers) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Messenger models unavailable' }));
+        return { _handled: true };
+    }
+
+    // Async access check and SSE setup
     (async () => {
         try {
-            // Получаем пользователя
+            // Get user
             const user = await global.getUserBySessionID(sessionID);
             if (!user) {
                 res.writeHead(401, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Пользователь не авторизован' }));
+                res.end(JSON.stringify({ error: 'User not authorized' }));
                 return;
             }
 
-            // Проверяем доступ
+            // Check access
             const membership = await modelsDB.Messenger_ChatMembers.findOne({
                 where: { chatId, userId: user.id, isActive: true }
             });
-            
+
             if (!membership) {
                 res.writeHead(403, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Доступ к чату запрещён' }));
+                res.end(JSON.stringify({ error: 'Chat access denied' }));
                 return;
             }
 
-        // Настраиваем SSE
-        res.writeHead(200, {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive'
-        });
+            // Setup SSE
+            res.writeHead(200, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive'
+            });
 
-        // Добавляем клиента
-        const clientId = Math.random().toString(36).substr(2, 9);
-        console.log('[messenger] subscribeToChat: chatId =', chatId, 'type:', typeof chatId, 'clientId:', clientId);
-        if (!sseClients.has(chatId)) {
-            sseClients.set(chatId, new Set());
-        }
-        const client = { res, userId: user.id, clientId };
-        sseClients.get(chatId).add(client);
-        
-        console.log(`[messenger] [${new Date().toISOString()}] SSE: пользователь ${user.name} подписался на чат ${chatId} (client: ${clientId})`);
-        console.log('[messenger] sseClients keys:', Array.from(sseClients.keys()), 'total clients:', sseClients.get(chatId).size);
-
-        // Отправляем подтверждение подключения
-        res.write(`data: ${JSON.stringify({ type: 'connected', chatId })}\n\n`);
-
-        // Обработчик отключения
-        req.on('close', () => {
-            console.log(`[messenger] [${new Date().toISOString()}] req.on('close') triggered for user ${user.name} chat ${chatId} (client: ${clientId})`);
-            const clients = sseClients.get(chatId);
-            console.log('[messenger] Clients in map before delete:', clients?.size || 0);
-            if (clients) {
-                clients.delete(client);
-                console.log('[messenger] Clients in map after delete:', clients.size);
-                if (clients.size === 0) {
-                    sseClients.delete(chatId);
-                    console.log('[messenger] Deleted chatId from Map:', chatId);
-                }
+            // Add client
+            const clientId = Math.random().toString(36).substr(2, 9);
+            console.log('[messenger] subscribeToChat: chatId =', chatId, 'type:', typeof chatId, 'clientId:', clientId);
+            if (!sseClients.has(chatId)) {
+                sseClients.set(chatId, new Set());
             }
-            console.log(`[messenger] [${new Date().toISOString()}] SSE: пользователь ${user.name} отключился от чата ${chatId} (client: ${clientId})`);
-        });
-        
+            const client = { res, userId: user.id, clientId };
+            sseClients.get(chatId).add(client);
+
+            console.log(`[messenger] [${new Date().toISOString()}] SSE: user ${user.name} subscribed to chat ${chatId} (client: ${clientId})`);
+            console.log('[messenger] sseClients keys:', Array.from(sseClients.keys()), 'total clients:', sseClients.get(chatId).size);
+
+            // Send connection confirmation
+            res.write(`data: ${JSON.stringify({ type: 'connected', chatId })}\n\n`);
+
+            // Disconnect handler
+            req.on('close', () => {
+                console.log(`[messenger] [${new Date().toISOString()}] req.on('close') triggered for user ${user.name} chat ${chatId} (client: ${clientId})`);
+                const clients = sseClients.get(chatId);
+                console.log('[messenger] Clients in map before delete:', clients?.size || 0);
+                if (clients) {
+                    clients.delete(client);
+                    console.log('[messenger] Clients in map after delete:', clients.size);
+                    if (clients.size === 0) {
+                        sseClients.delete(chatId);
+                        console.log('[messenger] Deleted chatId from Map:', chatId);
+                    }
+                }
+                console.log(`[messenger] [${new Date().toISOString()}] SSE: user ${user.name} disconnected from chat ${chatId} (client: ${clientId})`);
+            });
+
             console.log(`[messenger] [${new Date().toISOString()}] Close handler registered (client: ${clientId})`);
             console.log('[messenger] Map state after setup:', Array.from(sseClients.keys()), 'size:', sseClients.get(chatId)?.size);
         } catch (e) {
-            console.error('[messenger] Ошибка subscribeToChat:', e.message);
+            console.error('[messenger] subscribeToChat error:', e.message);
             res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Ошибка подписки: ' + e.message }));
+            res.end(JSON.stringify({ error: 'Subscription error: ' + e.message }));
         }
     })();
-    
-    // Возвращаем сразу, чтобы не блокировать
+
+    // Return immediately to avoid blocking
     return { _handled: true };
 }
 
-// Рассылка сообщения всем подписчикам чата
+// Broadcast message to all chat subscribers
 function broadcastMessage(chatId, message) {
     console.log('[messenger] broadcastMessage: chatId =', chatId, 'type:', typeof chatId);
     console.log('[messenger] sseClients keys:', Array.from(sseClients.keys()));
@@ -304,7 +304,7 @@ function broadcastMessage(chatId, message) {
             client.res.write(`data: ${data}\n\n`);
             console.log('[messenger] Message sent to client userId:', client.userId);
         } catch (e) {
-            console.error('[messenger] Ошибка отправки SSE:', e.message);
+            console.error('[messenger] SSE send error:', e.message);
             clients.delete(client);
         }
     });
@@ -312,43 +312,43 @@ function broadcastMessage(chatId, message) {
 
 async function sendMessage(params, sessionID) {
     let { chatId, content } = params || {};
-    chatId = parseInt(chatId); // Приводим к числу
+    chatId = parseInt(chatId); // Cast to number
     console.log('[messenger] sendMessage called:', { chatId, content, sessionID });
     console.log('[messenger] sendMessage: sseClients keys at start:', Array.from(sseClients.keys()), 'size for chatId:', sseClients.get(chatId)?.size);
-    
+
     if (!chatId) {
-        return { error: 'Не указан chatId' };
-    }
-    
-    if (!content || typeof content !== 'string' || content.trim().length === 0) {
-        return { error: 'Сообщение не может быть пустым' };
-    }
-    
-    if (!modelsDB || !modelsDB.Messenger_Messages || !modelsDB.Messenger_ChatMembers) {
-        return { error: 'Модели мессенджера недоступны' };
+        return { error: 'chatId not specified' };
     }
 
-    // Получаем пользователя из сессии
+    if (!content || typeof content !== 'string' || content.trim().length === 0) {
+        return { error: 'Message cannot be empty' };
+    }
+
+    if (!modelsDB || !modelsDB.Messenger_Messages || !modelsDB.Messenger_ChatMembers) {
+        return { error: 'Messenger models unavailable' };
+    }
+
+    // Get user from session
     const user = await global.getUserBySessionID(sessionID);
     if (!user) {
-        return { error: 'Пользователь не авторизован' };
+        return { error: 'User not authorized' };
     }
 
     const sequelize = modelsDB.Users.sequelize;
-    
+
     try {
         const result = await sequelize.transaction(async (t) => {
-            // Проверяем, что пользователь состоит в чате
+            // Check if user is in chat
             const membership = await modelsDB.Messenger_ChatMembers.findOne({
                 where: { chatId, userId: user.id, isActive: true },
                 transaction: t
             });
-            
+
             if (!membership) {
-                throw new Error('Доступ к чату запрещён');
+                throw new Error('Chat access denied');
             }
 
-            // Создаём сообщение
+            // Create message
             const message = await modelsDB.Messenger_Messages.create({
                 chatId,
                 userId: user.id,
@@ -365,47 +365,47 @@ async function sendMessage(params, sessionID) {
                 createdAt: message.createdAt
             };
         });
-        
-        // Рассылаем сообщение всем подписчикам ПОСЛЕ успешной транзакции
+
+        // Broadcast message to all subscribers AFTER successful transaction
         console.log('[messenger] Calling broadcastMessage:', { chatId, message: result });
         broadcastMessage(chatId, result);
         console.log('[messenger] broadcastMessage completed');
 
-        return { 
-            success: true, 
+        return {
+            success: true,
             message: result
         };
     } catch (e) {
-        console.error('[messenger] Ошибка sendMessage:', e.message);
-        return { error: 'Ошибка отправки сообщения: ' + e.message };
+        console.error('[messenger] sendMessage error:', e.message);
+        return { error: 'Message sending error: ' + e.message };
     }
 }
 
 
-// Создать приватный чат для двух пользователей
-// params: { user1: userModel, user2: userModel } - принимает sequelize-модели пользователей
-// transaction: если передана, используется эта транзакция, иначе создаётся новая
+// Create private chat for two users
+// params: { user1: userModel, user2: userModel } - accepts sequelize users models
+// transaction: if passed, uses this transaction, otherwise creates new one
 async function createTwoUserChat(params, sessionID, transaction) {
     const { user1, user2 } = params || {};
     if (!user1 || !user2 || user1.id === user2.id) {
-        throw new Error('Нужны два разных пользователя: user1 и user2 (объекты sequelize-моделей)');
+        throw new Error('Two different users required: user1 and user2 (sequelize model objects)');
     }
     if (!modelsDB || !modelsDB.Messenger_Chats || !modelsDB.Messenger_ChatMembers) {
-        throw new Error('Модели мессенджера недоступны');
+        throw new Error('Messenger models unavailable');
     }
 
     const sequelize = modelsDB.Users.sequelize;
-    
+
     const createChat = async (t) => {
-        // Создаём чат, владелец - первый пользователь
+        // Create chat, owner is first user
         const chat = await modelsDB.Messenger_Chats.create({
             userId: user1.id,
-            name: `Диалог: ${user1.name} ↔ ${user2.name}`,
-            description: 'Приватный диалог двух пользователей',
+            name: `Dialog: ${user1.name} ↔ ${user2.name}`,
+            description: 'Private dialog of two users',
             isActive: true,
         }, { transaction: t });
 
-        // Добавляем обоих участников с персональными именами (customName)
+        // Add both members with personal names (customName)
         await modelsDB.Messenger_ChatMembers.create({
             chatId: chat.id,
             userId: user1.id,
@@ -427,7 +427,7 @@ async function createTwoUserChat(params, sessionID, transaction) {
         return { chatId: chat.id };
     };
 
-    // Если транзакция передана, используем её; иначе создаём новую
+    // If transaction passed, use it; otherwise create new
     if (transaction) {
         return await createChat(transaction);
     } else {

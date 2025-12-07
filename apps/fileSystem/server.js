@@ -1,4 +1,4 @@
-// Серверные методы для fileSystem
+// Server methods for fileSystem
 const global = require('../../drive_root/globalServerContext');
 
 const fs = require('fs').promises;
@@ -6,13 +6,13 @@ const path = require('path');
 const config = require('./config.json');
 const storagePath = config.storagePath || 'D:\\prj_files';
 
-// Убедимся, что директория существует
-fs.mkdir(storagePath, { recursive: true }).catch(() => {});
+// Ensure directory exists
+fs.mkdir(storagePath, { recursive: true }).catch(() => { });
 
 async function uploadFile(params, sessionID, req, res) {
-    // Обработка загрузки файла
-    // req.file - загруженный файл (из multer memoryStorage)
-    // params - дополнительные данные (parentId, etc.)
+    // Handle file upload
+    // req.file - uploaded file (from multer memoryStorage)
+    // params - additional data (parentId, etc.)
     const { parentId } = params;
     const file = req.file;
 
@@ -20,11 +20,11 @@ async function uploadFile(params, sessionID, req, res) {
         return { error: 'No file uploaded' };
     }
 
-    // Исправляем кодировку имени файла
+    // Fix filename encoding
     const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
     console.log('Original name after decode:', originalName);
 
-    // Добавить запись в БД сначала
+    // Add record to DB first
     const FileModel = global.modelsDB.FileSystem_Files;
     const ext = path.extname(originalName);
     const baseName = path.basename(originalName, ext);
@@ -34,18 +34,18 @@ async function uploadFile(params, sessionID, req, res) {
         parentId: parentId || null,
         isFolder: false,
         size: file.size,
-        filePath: '', // обновим позже
-        ownerId: 1 // TODO: взять из сессии
+        filePath: '', // update later
+        ownerId: 1 // TODO: get from session
     });
 
-    // Сохранить файл под уникальным именем: id + ext
+    // Save file with unique name: id + ext
     const uniqueName = `${newFile.id}${ext}`;
     const filePath = path.join(storagePath, uniqueName);
     console.log('Saving file to:', filePath);
     await fs.writeFile(filePath, file.buffer);
     console.log('File saved successfully');
 
-    // Обновить filePath в БД
+    // Update filePath in DB
     const relativePath = path.relative(storagePath, filePath).replace(/\\/g, '/');
     await newFile.update({ filePath: relativePath });
 
@@ -73,7 +73,7 @@ async function createFolder(params, sessionID, req, res) {
         parentId: parentId || null,
         isFolder: true,
         size: 0,
-        ownerId: 1 // TODO: из сессии
+        ownerId: 1 // TODO: from session
     });
 
     return { success: true, folder: newFolder };
