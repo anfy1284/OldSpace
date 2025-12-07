@@ -22,7 +22,9 @@
     form.setAnchorToWindow('center');
 
     // Current directory
+    // Current directory
     let currentDirId = null;
+    let selectedFileId = null;
 
     // Create main container
     const container = document.createElement('div');
@@ -45,21 +47,41 @@
     filePanel.style.flexDirection = 'column';
 
     // Toolbar
-    const toolbar = document.createElement('div');
-    toolbar.style.display = 'flex';
-    toolbar.style.gap = '5px';
-    toolbar.style.marginBottom = '5px';
+    // Toolbar
+    const toolbar = new Toolbar(filePanel);
 
-    const newFolderBtn = document.createElement('button');
-    newFolderBtn.textContent = 'New Folder';
-    newFolderBtn.style.padding = '2px 10px';
+    // New Folder
+    const btnNewFolder = new ToolbarButton();
+    btnNewFolder.setText('New Folder');
+    btnNewFolder.setIcon('📁');
+    btnNewFolder.setTooltip('Create new folder');
+    btnNewFolder.onClick = () => createFolder();
+    toolbar.addItem(btnNewFolder);
 
-    const uploadBtn = document.createElement('button');
-    uploadBtn.textContent = 'Upload';
-    uploadBtn.style.padding = '2px 10px';
+    // Separator
+    toolbar.addItem(new ToolbarSeparator());
 
-    toolbar.appendChild(newFolderBtn);
-    toolbar.appendChild(uploadBtn);
+    // Upload
+    const btnUpload = new ToolbarButton();
+    btnUpload.setText('Upload');
+    btnUpload.setIcon('⬆️');
+    btnUpload.setTooltip('Upload files');
+    btnUpload.onClick = () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.multiple = true;
+        input.onchange = (e) => uploadFiles(e.target.files);
+        input.click();
+    };
+    toolbar.addItem(btnUpload);
+
+    // Download
+    const btnDownload = new ToolbarButton();
+    btnDownload.setText('Download');
+    btnDownload.setIcon('⬇️');
+    btnDownload.setTooltip('Download selected file');
+    btnDownload.onClick = () => downloadSelected();
+    toolbar.addItem(btnDownload);
 
     // File list
     const fileList = document.createElement('div');
@@ -76,7 +98,8 @@
         e.preventDefault();
     }, false);
 
-    filePanel.appendChild(toolbar);
+    toolbar.Draw(filePanel); // Render toolbar
+
     filePanel.appendChild(fileList);
 
     container.appendChild(treePanel);
@@ -93,14 +116,7 @@
     loadFiles();
 
     // Event listeners
-    newFolderBtn.onclick = () => createFolder();
-    uploadBtn.onclick = () => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.multiple = true;
-        input.onchange = (e) => uploadFiles(e.target.files);
-        input.click();
-    };
+
 
     // Drag and drop for file panel
     filePanel.addEventListener('dragover', (e) => {
@@ -139,7 +155,17 @@
             item.style.display = 'flex';
             item.style.alignItems = 'center';
             item.style.padding = '2px';
-            item.style.cursor = 'pointer';
+            item.style.cursor = 'default';
+            item.style.userSelect = 'none';
+
+            // Selection style
+            if (file.id === selectedFileId) {
+                item.style.backgroundColor = '#000080';
+                item.style.color = '#ffffff';
+            } else {
+                item.style.backgroundColor = 'transparent';
+                item.style.color = '#000000';
+            }
 
             const icon = document.createElement('span');
             icon.textContent = file.isFolder ? '📁' : '📄';
@@ -151,12 +177,22 @@
             item.appendChild(icon);
             item.appendChild(name);
 
-            if (file.isFolder) {
-                item.onclick = () => {
+            // Click -> Select
+            item.onclick = (e) => {
+                e.stopPropagation();
+                selectedFileId = file.id;
+                renderFiles(files); // Re-render to show selection
+            };
+
+            // DblClick -> Open if folder
+            item.ondblclick = (e) => {
+                e.stopPropagation();
+                if (file.isFolder) {
                     currentDirId = file.id;
+                    selectedFileId = null;
                     loadFiles();
-                };
-            }
+                }
+            };
 
             fileList.appendChild(item);
         });
@@ -194,5 +230,35 @@
             }
         }
         loadFiles();
+    }
+    function base64ToBlob(base64, mime) {
+        const byteCharacters = atob(base64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        return new Blob([byteArray], { type: mime });
+    }
+
+    async function downloadSelected() {
+        if (!selectedFileId) return alert('Select a file to download');
+        try {
+            const res = await callServerMethod('fileSystem', 'downloadFile', { fileId: selectedFileId });
+            if (res.error) return alert(res.error);
+
+            const blob = base64ToBlob(res.file.data, 'application/octet-stream');
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = res.file.name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            console.error(e);
+            alert('Download failed');
+        }
     }
 }

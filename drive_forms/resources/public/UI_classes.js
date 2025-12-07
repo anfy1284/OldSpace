@@ -1308,3 +1308,380 @@ class Label extends UIObject {
         return this.element;
     }
 }
+
+class Toolbar extends UIObject {
+    constructor(parentElement = null) {
+        super();
+        this.parentElement = parentElement;
+        this.items = [];
+        this.height = 28; // Default height for toolbar
+    }
+
+    addItem(item) {
+        this.items.push(item);
+        this.addChild(item);
+        if (this.element && item.element) {
+            this.element.appendChild(item.element);
+        } else if (this.element && !item.element) {
+            // Will be drawn when toolbar is drawn/refreshed
+        }
+    }
+
+    Draw(container) {
+        if (!this.element) {
+            this.element = document.createElement('div');
+            this.element.style.display = 'flex';
+            this.element.style.alignItems = 'center';
+            this.element.style.padding = '2px';
+            this.element.style.gap = '2px';
+            this.element.style.boxSizing = 'border-box';
+
+            // Win98 toolbar style
+            const initialBg = UIObject.getClientConfigValue('defaultColor', '#c0c0c0');
+            this.element.style.backgroundColor = initialBg;
+            // Often toolbars have a simplified border or none if inside a form
+            // simple separator line at bottom?
+            this.element.style.borderBottom = '1px solid #808080';
+            this.element.style.borderTop = '1px solid #ffffff';
+
+            if (!this.parentElement) {
+                this.element.style.position = 'absolute';
+                this.element.style.left = this.x + 'px';
+                this.element.style.top = this.y + 'px';
+                this.element.style.width = this.width + 'px';
+                this.element.style.height = this.height + 'px';
+                this.element.style.zIndex = this.z;
+            } else {
+                this.element.style.width = '100%';
+                this.element.style.height = this.height + 'px';
+                this.element.style.position = 'relative';
+            }
+
+            // Draw items
+            this.items.forEach(item => {
+                item.Draw(this.element);
+            });
+
+            UIObject.loadClientConfig().then(() => {
+                const bg = UIObject.getClientConfigValue('defaultColor', initialBg);
+                this.element.style.backgroundColor = bg;
+            });
+        }
+        if (container) container.appendChild(this.element);
+        return this.element;
+    }
+}
+
+class ToolbarButton extends UIObject {
+    constructor() {
+        super();
+        this.text = '';
+        this.icon = null;
+        this.tooltip = '';
+        this.toggle = false;
+        this.pressed = false;
+        this.group = null;
+        this.width = 24; // Default icon button width
+        this.height = 22; // Default height
+        this.autoWidth = false; // if text is present
+    }
+
+    setText(text) {
+        this.text = text;
+        this.autoWidth = !!text;
+    }
+    setIcon(icon) { this.icon = icon; }
+    setTooltip(tooltip) { this.tooltip = tooltip; }
+    setToggle(toggle) { this.toggle = toggle; }
+    setGroup(group) { this.group = group; }
+
+    setPressed(pressed) {
+        this.pressed = pressed;
+        this.updateStyle();
+    }
+
+    updateStyle() {
+        if (!this.element) return;
+        if (this.pressed) {
+            this.element.style.borderTop = '1px solid #808080';
+            this.element.style.borderLeft = '1px solid #808080';
+            this.element.style.borderRight = '1px solid #ffffff';
+            this.element.style.borderBottom = '1px solid #ffffff';
+            this.element.style.backgroundColor = '#d0d0d0';
+        } else {
+            this.element.style.border = '1px solid transparent';
+            this.element.style.backgroundColor = 'transparent';
+        }
+    }
+
+    Draw(container) {
+        if (!this.element) {
+            this.element = document.createElement('div');
+            this.element.title = this.tooltip;
+            this.element.style.display = 'flex';
+            this.element.style.flexDirection = 'row';
+            this.element.style.alignItems = 'center';
+            this.element.style.justifyContent = 'center';
+            this.element.style.boxSizing = 'border-box';
+            this.element.style.cursor = 'default';
+            this.element.style.border = '1px solid transparent';
+            this.element.style.padding = '0 4px';
+            this.element.style.userSelect = 'none';
+
+            if (this.autoWidth) {
+                this.element.style.width = 'auto'; // Auto width for text buttons
+                this.element.style.minWidth = '24px';
+            } else {
+                this.element.style.width = this.width + 'px';
+            }
+            this.element.style.height = this.height + 'px';
+
+            if (this.icon) {
+                const iconSpan = document.createElement('span');
+                iconSpan.textContent = this.icon;
+                iconSpan.style.fontSize = '16px';
+                iconSpan.style.display = 'flex';
+                iconSpan.style.alignItems = 'center';
+                iconSpan.style.justifyContent = 'center';
+                this.element.appendChild(iconSpan);
+                if (this.text) {
+                    iconSpan.style.marginRight = '4px';
+                }
+            }
+
+            if (this.text) {
+                const textSpan = document.createElement('span');
+                textSpan.textContent = this.text;
+                textSpan.style.fontSize = '11px';
+                textSpan.style.fontFamily = 'MS Sans Serif, sans-serif';
+                textSpan.style.whiteSpace = 'nowrap';
+                this.element.appendChild(textSpan);
+            }
+
+            this.element.addEventListener('mouseenter', () => {
+                if (!this.pressed && !this.element.disabled) {
+                    this.element.style.borderTop = '1px solid #ffffff';
+                    this.element.style.borderLeft = '1px solid #ffffff';
+                    this.element.style.borderRight = '1px solid #808080';
+                    this.element.style.borderBottom = '1px solid #808080';
+                }
+            });
+
+            this.element.addEventListener('mouseleave', () => {
+                if (!this.pressed) {
+                    this.element.style.border = '1px solid transparent';
+                }
+            });
+
+            this.element.addEventListener('mousedown', (e) => {
+                this.element.style.borderTop = '1px solid #808080';
+                this.element.style.borderLeft = '1px solid #808080';
+                this.element.style.borderRight = '1px solid #ffffff';
+                this.element.style.borderBottom = '1px solid #ffffff';
+                this.onMouseDown(e);
+            });
+
+            this.element.addEventListener('mouseup', (e) => {
+                if (!this.toggle) {
+                    this.element.style.borderTop = '1px solid #ffffff';
+                    this.element.style.borderLeft = '1px solid #ffffff';
+                    this.element.style.borderRight = '1px solid #808080';
+                    this.element.style.borderBottom = '1px solid #808080';
+                }
+                this.onMouseUp(e);
+            });
+
+            this.element.addEventListener('click', (e) => {
+                if (this.toggle) {
+                    this.pressed = !this.pressed;
+                    this.updateStyle();
+                }
+                this.onClick(e);
+            });
+
+            if (this.pressed) {
+                this.updateStyle();
+            }
+        }
+        if (container) container.appendChild(this.element);
+        return this.element;
+    }
+}
+
+class ToolbarSeparator extends UIObject {
+    Draw(container) {
+        if (!this.element) {
+            this.element = document.createElement('div');
+            this.element.style.width = '2px';
+            this.element.style.height = '18px';
+            this.element.style.marginLeft = '2px';
+            this.element.style.marginRight = '2px';
+            this.element.style.borderLeft = '1px solid #808080';
+            this.element.style.borderRight = '1px solid #ffffff';
+        }
+        if (container) container.appendChild(this.element);
+        return this.element;
+    }
+}
+
+class Checkbox extends UIObject {
+    constructor(parentElement = null) {
+        super();
+        this.parentElement = parentElement;
+        this.checked = false;
+        this.text = '';
+        this.box = null;
+        this.textSpan = null;
+    }
+    setChecked(checked) {
+        this.checked = checked;
+        this.updateVisual();
+    }
+    setText(text) {
+        this.text = text;
+        if (this.textSpan) this.textSpan.textContent = text;
+    }
+    updateVisual() {
+        if (this.box) {
+            this.box.textContent = this.checked ? '✔' : '';
+            // Using unicode checkmark, centered
+        }
+    }
+    Draw(container) {
+        if (!this.element) {
+            this.element = document.createElement('div');
+            this.element.style.display = 'flex';
+            this.element.style.alignItems = 'center';
+            this.element.style.cursor = 'default';
+            this.element.style.userSelect = 'none';
+
+            this.box = document.createElement('div');
+            this.box.style.width = '13px';
+            this.box.style.height = '13px';
+            this.box.style.backgroundColor = '#ffffff';
+            this.box.style.borderTop = '1px solid #808080';
+            this.box.style.borderLeft = '1px solid #808080';
+            this.box.style.borderRight = '1px solid #ffffff';
+            this.box.style.borderBottom = '1px solid #ffffff';
+            this.box.style.boxShadow = 'inset 1px 1px 0px #000000, 1px 1px 0px #ffffff'; // deeper sunken look
+            this.box.style.display = 'flex';
+            this.box.style.alignItems = 'center';
+            this.box.style.justifyContent = 'center';
+            this.box.style.fontSize = '10px';
+            this.box.style.marginRight = '6px';
+            this.box.style.color = '#000000';
+
+            this.element.appendChild(this.box);
+
+            this.textSpan = document.createElement('span');
+            this.textSpan.textContent = this.text;
+            this.textSpan.style.fontFamily = 'MS Sans Serif, sans-serif';
+            this.textSpan.style.fontSize = '11px';
+            this.element.appendChild(this.textSpan);
+
+            this.element.onclick = () => {
+                this.setChecked(!this.checked);
+                this.onClick();
+            };
+
+            this.updateVisual();
+
+            if (!this.parentElement) {
+                this.element.style.position = 'absolute';
+                this.element.style.left = this.x + 'px';
+                this.element.style.top = this.y + 'px';
+                this.element.style.zIndex = this.z;
+            }
+        }
+        if (container) container.appendChild(this.element);
+        return this.element;
+    }
+}
+
+class RadioButton extends UIObject {
+    constructor(parentElement = null) {
+        super();
+        this.parentElement = parentElement;
+        this.checked = false;
+        this.text = '';
+        this.group = null;
+        this.circle = null;
+        this.textSpan = null;
+    }
+    setChecked(checked) {
+        this.checked = checked;
+        this.updateVisual();
+    }
+    setText(text) {
+        this.text = text;
+        if (this.textSpan) this.textSpan.textContent = text;
+    }
+    setGroup(group) {
+        this.group = group;
+    }
+    updateVisual() {
+        if (this.circleIcon) {
+            this.circleIcon.style.visibility = this.checked ? 'visible' : 'hidden';
+        }
+    }
+    Draw(container) {
+        if (!this.element) {
+            this.element = document.createElement('div');
+            this.element.style.display = 'flex';
+            this.element.style.alignItems = 'center';
+            this.element.style.cursor = 'default';
+            this.element.style.userSelect = 'none';
+
+            // Outer circle with sunken 3D effect
+            this.circle = document.createElement('div');
+            this.circle.style.width = '12px';
+            this.circle.style.height = '12px';
+            this.circle.style.borderRadius = '50%';
+            this.circle.style.backgroundColor = '#ffffff';
+            // Win98 radio border simulation with CSS borders (tricky for circle)
+            // Simplified: solid border + box shadow
+            this.circle.style.boxShadow = 'inset 1px 1px 2px rgba(0,0,0,0.5)';
+            this.circle.style.border = '1px solid #808080';
+
+            this.circle.style.display = 'flex';
+            this.circle.style.alignItems = 'center';
+            this.circle.style.justifyContent = 'center';
+            this.circle.style.marginRight = '6px';
+
+            // The dot
+            this.circleIcon = document.createElement('div');
+            this.circleIcon.style.width = '4px';
+            this.circleIcon.style.height = '4px';
+            this.circleIcon.style.backgroundColor = '#000000';
+            this.circleIcon.style.borderRadius = '50%';
+            this.circle.appendChild(this.circleIcon);
+
+            this.element.appendChild(this.circle);
+
+            this.textSpan = document.createElement('span');
+            this.textSpan.textContent = this.text;
+            this.textSpan.style.fontFamily = 'MS Sans Serif, sans-serif';
+            this.textSpan.style.fontSize = '11px';
+            this.element.appendChild(this.textSpan);
+
+            this.element.onclick = () => {
+                if (!this.checked) {
+                    this.setChecked(true);
+                    // Logic for unchecking others in group would ideally be here or global
+                }
+                this.onClick();
+            };
+
+            this.updateVisual();
+
+            if (!this.parentElement) {
+                this.element.style.position = 'absolute';
+                this.element.style.left = this.x + 'px';
+                this.element.style.top = this.y + 'px';
+                this.element.style.zIndex = this.z;
+            }
+        }
+        if (container) container.appendChild(this.element);
+        return this.element;
+    }
+}

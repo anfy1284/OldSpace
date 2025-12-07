@@ -79,8 +79,31 @@ async function createFolder(params, sessionID, req, res) {
     return { success: true, folder: newFolder };
 }
 
+async function downloadFile(params, sessionID, req, res) {
+    const { fileId } = params;
+    const FileModel = global.modelsDB.FileSystem_Files;
+    const fileRecord = await FileModel.findByPk(fileId);
+
+    if (!fileRecord) return { error: 'File not found' };
+    if (fileRecord.isFolder) return { error: 'Cannot download directory' };
+
+    const fullPath = path.join(storagePath, fileRecord.filePath);
+    try {
+        const buffer = await fs.readFile(fullPath);
+        return {
+            file: {
+                name: fileRecord.name,
+                data: buffer.toString('base64')
+            }
+        };
+    } catch (e) {
+        return { error: 'Read error: ' + e.message };
+    }
+}
+
 module.exports = {
     uploadFile,
     getFiles,
-    createFolder
+    createFolder,
+    downloadFile
 };
