@@ -1,6 +1,7 @@
 // Get getContentType from global context
 const { getContentType } = require('./globalServerContext');
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const qs = require('querystring');
@@ -229,13 +230,20 @@ async function handleRequest(req, res) {
     }
 }
 
-function createServer() {
-    const server = http.createServer((req, res) => {
+function createServer(options = {}) {
+    const requestListener = (req, res) => {
         handleRequest(req, res).catch(e => {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'Internal Server Error', details: e.message }));
         });
-    });
+    };
+
+    let server;
+    if (options.key && options.cert) {
+        server = https.createServer(options, requestListener);
+    } else {
+        server = http.createServer(requestListener);
+    }
     return server;
 }
 

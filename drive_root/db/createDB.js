@@ -17,6 +17,12 @@ const defaultValuesData = require('./defaultValues.json');
 const defaultValues = processDefaultValues(defaultValuesData, LEVEL);
 
 async function ensureDatabase() {
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (isProduction && process.env.DATABASE_URL) {
+    console.log('Using DATABASE_URL in production, skipping database creation check.');
+    return;
+  }
+
   const adminClient = new Client({
     user: dbSettings.username,
     password: dbSettings.password,
@@ -37,6 +43,19 @@ async function ensureDatabase() {
 }
 
 function getSequelizeInstance() {
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (isProduction && process.env.DATABASE_URL) {
+    return new Sequelize(process.env.DATABASE_URL, {
+      dialect: 'postgres',
+      logging: false,
+      dialectOptions: {
+        ssl: {
+          require: true,
+          rejectUnauthorized: false
+        }
+      }
+    });
+  }
   return new Sequelize(dbSettings.database, dbSettings.username, dbSettings.password, {
     host: dbSettings.host,
     port: dbSettings.port,

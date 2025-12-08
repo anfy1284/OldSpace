@@ -28,3 +28,6 @@ Thumbs.db
 
 # Uploaded files
 uploads/
+
+# SSL Certificates
+*.pem

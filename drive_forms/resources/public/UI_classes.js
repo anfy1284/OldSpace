@@ -1336,13 +1336,12 @@ class Toolbar extends UIObject {
             this.element.style.gap = '2px';
             this.element.style.boxSizing = 'border-box';
 
-            // Win98 toolbar style
-            const initialBg = UIObject.getClientConfigValue('defaultColor', '#c0c0c0');
-            this.element.style.backgroundColor = initialBg;
-            // Often toolbars have a simplified border or none if inside a form
-            // simple separator line at bottom?
-            this.element.style.borderBottom = '1px solid #808080';
-            this.element.style.borderTop = '1px solid #ffffff';
+            // Win98 toolbar style - FLATTENED as requested
+            // Keeping it transparent or inheriting parent color? 
+            // User requested "remove volume", so transparent is safest or same as window bg.
+            // Usually rebar/coolbar is transparent.
+            this.element.style.backgroundColor = 'transparent';
+            this.element.style.border = 'none'; // Remove borders
 
             if (!this.parentElement) {
                 this.element.style.position = 'absolute';
@@ -1361,11 +1360,7 @@ class Toolbar extends UIObject {
             this.items.forEach(item => {
                 item.Draw(this.element);
             });
-
-            UIObject.loadClientConfig().then(() => {
-                const bg = UIObject.getClientConfigValue('defaultColor', initialBg);
-                this.element.style.backgroundColor = bg;
-            });
+            // Skip loading config color to keep it transparent/flat as requested
         }
         if (container) container.appendChild(this.element);
         return this.element;
@@ -1443,6 +1438,7 @@ class ToolbarButton extends UIObject {
                 iconSpan.style.display = 'flex';
                 iconSpan.style.alignItems = 'center';
                 iconSpan.style.justifyContent = 'center';
+                iconSpan.style.lineHeight = '1'; // Fix emoji vertical offset
                 this.element.appendChild(iconSpan);
                 if (this.text) {
                     iconSpan.style.marginRight = '4px';
