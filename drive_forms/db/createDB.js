@@ -16,6 +16,19 @@ const defaultValuesData = require('./defaultValues.json');
 const defaultValues = processDefaultValues(defaultValuesData, LEVEL);
 
 function getSequelizeInstance() {
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (isProduction && process.env.DATABASE_URL) {
+    return new Sequelize(process.env.DATABASE_URL, {
+      dialect: 'postgres',
+      logging: false,
+      dialectOptions: {
+        ssl: {
+          require: true,
+          rejectUnauthorized: false
+        }
+      }
+    });
+  }
   return new Sequelize(dbSettings.database, dbSettings.username, dbSettings.password, {
     host: dbSettings.host,
     port: dbSettings.port,
