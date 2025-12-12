@@ -1,7 +1,7 @@
 {
     "level": "app",
     "system": ["mySpace"],
-    "access": ["admin", "public"],
+    "access": ["admin", "public", "user"],
     "dependencies": {},
     "mainMenuCommands": 
         [

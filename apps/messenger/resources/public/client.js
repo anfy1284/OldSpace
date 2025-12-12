@@ -160,7 +160,7 @@
 			.then(result => {
 				if (result.error) {
 					console.error('[Messenger] Sending error:', result.error);
-					alert('Error: ' + result.error);
+					showAlert('Error: ' + result.error);
 					return;
 				}
 
@@ -172,7 +172,7 @@
 			})
 			.catch(err => {
 				console.error('[Messenger] Message sending error:', err.message);
-				alert('Sending error');
+				showAlert('Sending error');
 			})
 			.finally(() => {
 				// Enable input back

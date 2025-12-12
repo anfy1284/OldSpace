@@ -13,9 +13,12 @@ loginForm.lblUsername = null;
 loginForm.txtUsername = null;
 loginForm.lblPassword = null;
 loginForm.txtPassword = null;
+loginForm.lblConfirmPassword = null;
+loginForm.txtConfirmPassword = null;
 loginForm.btnLogin = null;
 loginForm.btnCreate = null;
 loginForm.btnGuest = null;
+loginForm.btnCancel = null;
 loginForm.contentArea = null;
 
 loginForm.Draw = function (parent) {
@@ -41,6 +44,17 @@ loginForm.Draw = function (parent) {
     this.txtPassword.Draw(this.contentArea);
     this.txtPassword.element.type = 'password';
 
+    // Confirm Password
+    this.lblConfirmPassword = new Label(this.contentArea);
+    this.lblConfirmPassword.setText('Confirm Password:');
+    this.lblConfirmPassword.Draw(this.contentArea);
+    this.lblConfirmPassword.setHidden(true);
+
+    this.txtConfirmPassword = new TextBox(this.contentArea);
+    this.txtConfirmPassword.Draw(this.contentArea);
+    this.txtConfirmPassword.element.type = 'password';
+    this.txtConfirmPassword.setHidden(true);
+
     // Buttons
     this.btnLogin = new Button(this.contentArea);
     this.btnLogin.setCaption('Login');
@@ -48,20 +62,67 @@ loginForm.Draw = function (parent) {
     this.btnLogin.onClick = function () {
         const username = loginForm.txtUsername.getText();
         const password = loginForm.txtPassword.getText();
-        alert('Username: ' + username + '\nPassword: ' + password);
+        
+        callServerMethod('login', 'login', { username, password })
+            .then(result => {
+                if (result.success) {
+                    location.reload();
+                } else {
+                    showAlert('Login failed: ' + result.error);
+                }
+            })
+            .catch(err => {
+                console.error('Error:', err);
+                showAlert('Login error: ' + err.message);
+            });
     };
 
     this.btnCreate = new Button(this.contentArea);
     this.btnCreate.setCaption('Create Login');
     this.btnCreate.Draw(this.contentArea);
     this.btnCreate.onClick = function () {
-        callServerMethod('login', 'testConnection', {})
-            .then(result => {
-                loginForm.txtUsername.setText(result);
-            })
-            .catch(err => {
-                console.error('Error:', err);
-            });
+        if (loginForm.txtConfirmPassword.getHidden()) {
+            // Show confirmation field
+            loginForm.lblConfirmPassword.setHidden(false);
+            loginForm.txtConfirmPassword.setHidden(false);
+            
+            // Hide login/guest, show cancel
+            loginForm.btnLogin.setHidden(true);
+            loginForm.btnGuest.setHidden(true);
+            loginForm.btnCancel.setHidden(false);
+
+            loginForm.btnCreate.setCaption('Confirm Create');
+            loginForm.reDraw();
+        } else {
+            // Perform creation
+            const username = loginForm.txtUsername.getText();
+            const password = loginForm.txtPassword.getText();
+            const confirm = loginForm.txtConfirmPassword.getText();
+
+            if (password !== confirm) {
+                showAlert('Passwords do not match!');
+                return;
+            }
+            if (!username || !password) {
+                showAlert('Username and password are required!');
+                return;
+            }
+
+            callServerMethod('login', 'createUser', { username, password })
+                .then(result => {
+                    if (result.success) {
+                        showAlert('User created! Logging in...', () => {
+                            location.reload();
+                        });
+                    } else {
+                        showAlert('Creation failed: ' + result.error);
+                    }
+                })
+                .catch(err => {
+                    console.error('Error:', err);
+                    showAlert('Creation error: ' + err.message);
+                });
+        }
     };
 
     this.btnGuest = new Button(this.contentArea);
@@ -77,6 +138,23 @@ loginForm.Draw = function (parent) {
             });
     };
 
+    this.btnCancel = new Button(this.contentArea);
+    this.btnCancel.setCaption('Cancel');
+    this.btnCancel.Draw(this.contentArea);
+    this.btnCancel.setHidden(true);
+    this.btnCancel.onClick = function () {
+        loginForm.lblConfirmPassword.setHidden(true);
+        loginForm.txtConfirmPassword.setHidden(true);
+        loginForm.txtConfirmPassword.setText('');
+
+        loginForm.btnLogin.setHidden(false);
+        loginForm.btnGuest.setHidden(false);
+        loginForm.btnCancel.setHidden(true);
+
+        loginForm.btnCreate.setCaption('Create Login');
+        loginForm.reDraw();
+    };
+
     setTimeout(() => {
         this.reDraw();
     }, 50);
@@ -88,12 +166,29 @@ loginForm.reDraw = function () {
     const width = this.contentArea.clientWidth;
     const height = this.contentArea.clientHeight;
 
+    // Determine visible elements
+    const isConfirmVisible = !this.txtConfirmPassword.getHidden();
+
     // Element count: 2 label + 2 textbox + 3 button + 6 gap + 2 padding
-    const numLabels = 2;
-    const numTextboxes = 2;
-    const numButtons = 3;
-    const numGaps = 6;
+    let numLabels = 2;
+    let numTextboxes = 2;
+    let numButtons = 0;
+    let numGaps = 0;
     const numPaddings = 2;
+
+    if (isConfirmVisible) {
+        numLabels++;
+        numTextboxes++;
+    }
+
+    // Count visible buttons
+    if (!this.btnLogin.getHidden()) numButtons++;
+    if (!this.btnCreate.getHidden()) numButtons++;
+    if (!this.btnGuest.getHidden()) numButtons++;
+    if (!this.btnCancel.getHidden()) numButtons++;
+
+    const totalItems = numLabels + numTextboxes + numButtons;
+    numGaps = Math.max(0, totalItems - 1);
 
     // Proportional to container height
     const minPadding = 16;
@@ -115,30 +210,33 @@ loginForm.reDraw = function () {
     let currentTop = padding;
     const inputWidth = width - (padding * 2);
 
+    // Helper to layout visible element
+    const layoutElement = (el, h) => {
+        if (!el.getHidden()) {
+            UIObject.styleElement(el, padding, currentTop, inputWidth, h, fontSize, 1, false);
+            currentTop += h + gap;
+        }
+    };
+
     // Username
-    UIObject.styleElement(this.lblUsername, padding, currentTop, inputWidth, labelHeight, fontSize, 1, false);
-    currentTop += labelHeight + gap;
-    UIObject.styleElement(this.txtUsername, padding, currentTop, inputWidth, elementHeight, fontSize, 1, false);
-    currentTop += elementHeight + gap;
+    layoutElement(this.lblUsername, labelHeight);
+    layoutElement(this.txtUsername, elementHeight);
 
     // Password
-    UIObject.styleElement(this.lblPassword, padding, currentTop, inputWidth, labelHeight, fontSize, 1, false);
-    currentTop += labelHeight + gap;
-    UIObject.styleElement(this.txtPassword, padding, currentTop, inputWidth, elementHeight, fontSize, 1, false);
-    currentTop += elementHeight + gap;
+    layoutElement(this.lblPassword, labelHeight);
+    layoutElement(this.txtPassword, elementHeight);
+
+    // Confirm Password
+    layoutElement(this.lblConfirmPassword, labelHeight);
+    layoutElement(this.txtConfirmPassword, elementHeight);
 
     // Buttons - Vertical Column, Equal Sizes
-    // Login Button
-    UIObject.styleElement(this.btnLogin, padding, currentTop, inputWidth, elementHeight, fontSize, 1, false);
+    layoutElement(this.btnLogin, elementHeight);
     this.btnLogin.element.style.fontWeight = 'bold';
-    currentTop += elementHeight + gap;
 
-    // Create Login Button
-    UIObject.styleElement(this.btnCreate, padding, currentTop, inputWidth, elementHeight, fontSize, 1, false);
-    currentTop += elementHeight + gap;
-
-    // Guest Button
-    UIObject.styleElement(this.btnGuest, padding, currentTop, inputWidth, elementHeight, fontSize, 1, false);
+    layoutElement(this.btnCreate, elementHeight);
+    layoutElement(this.btnGuest, elementHeight);
+    layoutElement(this.btnCancel, elementHeight);
 }
 
 loginForm.onResizing = function () {

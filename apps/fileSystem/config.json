@@ -2,7 +2,7 @@
     "level": "app",
     "autoStart": false,
     "system": ["mySpace"],
-    "access": ["admin", "public"],
+    "access": ["admin", "public", "user"],
     "dependencies": {},
     "storagePath": "./uploads",
     "mainMenuCommands": [

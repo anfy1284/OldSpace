@@ -5,7 +5,8 @@
     ],
     "access": [
         "admin",
-        "public"
+        "public",
+        "user"
     ],
     "dependencies": {},
     "mainMenuCommands": [

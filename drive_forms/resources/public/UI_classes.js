@@ -9,8 +9,17 @@ class UIObject {
         this.width = 0;
         this.height = 0;
         this.z = 0;
+        this.hidden = false;
     }
     // Setters / Getters for geometry & depth
+    setHidden(hidden) {
+        this.hidden = hidden;
+        if (this.element) {
+            this.element.style.display = hidden ? 'none' : '';
+        }
+    }
+    getHidden() { return this.hidden; }
+
     setX(x) {
         this.x = x;
         if (this.element) this.element.style.left = x + 'px';
@@ -214,6 +223,9 @@ class Form extends UIObject {
 
     activate() {
         if (this.element) {
+            // If there is any other modal form open, don't allow activation of this form
+            const modalOpen = Form._allForms.some(f => f !== this && f.isModal && f.element && f.element.parentElement);
+            if (modalOpen) return; // keep modality: ignore activation requests
             // Deactivate all other forms
             Form._allForms.forEach(form => {
                 if (form !== this) {
@@ -322,6 +334,54 @@ class Form extends UIObject {
         return this.contentArea;
     }
 
+    setModal(modal) {
+        this.isModal = modal;
+        if (this.element) {
+            this.updateModalState();
+        }
+    }
+
+    updateModalState() {
+        if (this.isModal) {
+            if (!this.modalOverlay) {
+                this.modalOverlay = document.createElement('div');
+                this.modalOverlay.style.position = 'fixed';
+                this.modalOverlay.style.top = '0';
+                this.modalOverlay.style.left = '0';
+                this.modalOverlay.style.width = '100%';
+                this.modalOverlay.style.height = '100%';
+                // Transparent but blocking
+                this.modalOverlay.style.backgroundColor = 'transparent'; 
+                this.modalOverlay.style.zIndex = this.z - 1; // Behind the form
+                document.body.appendChild(this.modalOverlay);
+                
+                // Prevent clicks on overlay
+                this.modalOverlay.addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    this.activate();
+                    // Visual feedback?
+                });
+            }
+            this.modalOverlay.style.display = 'block';
+            this.modalOverlay.style.zIndex = this.z - 1;
+        } else {
+            if (this.modalOverlay) {
+                this.modalOverlay.style.display = 'none';
+            }
+        }
+
+        // If this form has a minimize button, disable it while modal
+        if (this.btnMinimize) {
+            try {
+                this.btnMinimize.disabled = !!this.isModal;
+                this.btnMinimize.style.cursor = this.isModal ? 'not-allowed' : 'pointer';
+            } catch (e) {
+                // ignore styling errors
+            }
+        }
+    }
+
     updatePositionOnResize() {
         if (this.anchorToWindow === 'center') {
             this.setX((window.innerWidth - this.width) / 2);
@@ -358,6 +418,11 @@ class Form extends UIObject {
             this.element.style.zIndex = this.z;
             this.element.tabIndex = 0;
             this.element.style.outline = 'none';
+
+            // Focus on creation
+            setTimeout(() => {
+                if (this.element) this.activate();
+            }, 0);
 
             // Add form to global array
             Form._allForms.push(this);
@@ -454,6 +519,9 @@ class Form extends UIObject {
             // Apply themed 3D style
             applyTitleButtonColors(btnMinimize, UIObject.getClientConfigValue('defaultColor', initialBg));
             buttonsContainer.appendChild(btnMinimize);
+
+            // Keep reference to minimize button so we can disable it for modal forms
+            this.btnMinimize = btnMinimize;
 
             // Maximize button
             const btnMaximize = document.createElement('button');
@@ -769,6 +837,9 @@ class Form extends UIObject {
             container.appendChild(this.element);
         }
 
+        // Update modal state if needed
+        this.updateModalState();
+
         // Add event handlers for form
         this.element.addEventListener('mousedown', (e) => {
             this.activate();
@@ -843,6 +914,10 @@ class Form extends UIObject {
     }
 
     close() {
+        if (this.modalOverlay) {
+            this.modalOverlay.remove();
+            this.modalOverlay = null;
+        }
         if (this.element) {
             this.element.remove();
         }
@@ -853,9 +928,37 @@ class Form extends UIObject {
         if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('form-destroyed', { detail: { form: this } }));
         }
+
+        // Activate next top form
+        let topForm = null;
+        let maxZ = -1;
+        Form._allForms.forEach(form => {
+            // Only consider visible forms
+            if (form.element && form.element.style.display !== 'none' && form.z > maxZ) {
+                maxZ = form.z;
+                topForm = form;
+            }
+        });
+
+        if (topForm) {
+            topForm.activate();
+        }
     }
 
     minimize() {
+        // Do not allow minimizing of modal forms
+        if (this.isModal) {
+            // Small visual feedback on attempted minimize
+            if (this.modalOverlay) {
+                const prev = this.modalOverlay.style.backgroundColor;
+                this.modalOverlay.style.backgroundColor = 'rgba(0,0,0,0.02)';
+                setTimeout(() => {
+                    if (this.modalOverlay) this.modalOverlay.style.backgroundColor = prev;
+                }, 120);
+            }
+            return;
+        }
+
         if (this.element) {
             this.element.style.display = 'none';
         }
@@ -1680,4 +1783,167 @@ class RadioButton extends UIObject {
         if (container) container.appendChild(this.element);
         return this.element;
     }
+}
+
+// Common base for modal dialogs (Alert, Confirm, etc.)
+class ModalForm extends Form {
+    constructor(title = '', width = 300, height = 150) {
+        super();
+        this.setTitle(title);
+        this.setWidth(width);
+        this.setHeight(height);
+        this.setAnchorToWindow('center');
+        this.resizable = false;
+        this.movable = true;
+    }
+
+    Draw(container) {
+        super.Draw(container);
+        // Make modal and center
+        this.setModal(true);
+        this.updatePositionOnResize();
+
+        // Hide title bar buttons block (if present)
+        if (this.titleBar) {
+            const children = this.titleBar.children;
+            for (let i = 0; i < children.length; i++) {
+                if (children[i].tagName === 'DIV' && children[i].children.length > 0 && children[i].children[0].tagName === 'BUTTON') {
+                    children[i].style.display = 'none';
+                    break;
+                }
+            }
+        }
+
+        // Provide content area reference for subclasses
+        this.contentArea = this.getContentArea();
+    }
+}
+
+class AlertForm extends ModalForm {
+    constructor(message, onOk) {
+        super('Alert', 300, 150);
+        this.message = message;
+        this.onOk = onOk;
+    }
+
+    Draw(container) {
+        super.Draw(container);
+
+        const lblMessage = new Label(this.contentArea);
+        lblMessage.setText(this.message);
+        lblMessage.Draw(this.contentArea);
+        if (lblMessage.element) {
+            lblMessage.element.style.textAlign = 'center';
+            lblMessage.element.style.whiteSpace = 'pre-wrap';
+            lblMessage.element.style.display = 'flex';
+            lblMessage.element.style.alignItems = 'center';
+            lblMessage.element.style.justifyContent = 'center';
+        }
+        UIObject.styleElement(lblMessage, 10, 10, this.width - 20, this.height - 80, 14);
+
+        const btnOk = new Button(this.contentArea);
+        btnOk.setCaption('OK');
+        btnOk.Draw(this.contentArea);
+        btnOk.onClick = () => {
+            this.close();
+            if (this.onOk) this.onOk();
+        };
+
+        const btnWidth = 80;
+        const btnHeight = 26;
+        const btnX = (this.width - btnWidth) / 2;
+        const btnY = this.height - 40 - 20;
+        UIObject.styleElement(btnOk, btnX, btnY, btnWidth, btnHeight, 12);
+
+        // store reference so callers can access if needed
+        this.okButton = btnOk;
+        setTimeout(() => {
+            try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e) {}
+            if (this.okButton && this.okButton.element) this.okButton.element.focus();
+        }, 50);
+    }
+}
+
+class ConfirmForm extends ModalForm {
+    constructor(message, onOk, onCancel) {
+        super('Confirm', 360, 170);
+        this.message = message;
+        this.onOk = onOk;
+        this.onCancel = onCancel;
+    }
+
+    Draw(container) {
+        super.Draw(container);
+
+        const lblMessage = new Label(this.contentArea);
+        lblMessage.setText(this.message);
+        lblMessage.Draw(this.contentArea);
+        if (lblMessage.element) {
+            lblMessage.element.style.textAlign = 'center';
+            lblMessage.element.style.whiteSpace = 'pre-wrap';
+            lblMessage.element.style.display = 'flex';
+            lblMessage.element.style.alignItems = 'center';
+            lblMessage.element.style.justifyContent = 'center';
+        }
+        UIObject.styleElement(lblMessage, 10, 10, this.width - 20, this.height - 80, 13);
+
+        const btnOk = new Button(this.contentArea);
+        btnOk.setCaption('OK');
+        btnOk.Draw(this.contentArea);
+        btnOk.onClick = () => {
+            this.close();
+            if (this.onOk) this.onOk();
+        };
+
+        const btnCancel = new Button(this.contentArea);
+        btnCancel.setCaption('Cancel');
+        btnCancel.Draw(this.contentArea);
+        btnCancel.onClick = () => {
+            this.close();
+            if (this.onCancel) this.onCancel();
+        };
+
+        const btnWidth = 90;
+        const btnHeight = 28;
+        const spacing = 12;
+        const totalW = btnWidth * 2 + spacing;
+        const startX = (this.width - totalW) / 2;
+        const btnY = this.height - 48 - 10;
+
+        UIObject.styleElement(btnOk, startX, btnY, btnWidth, btnHeight, 12);
+        UIObject.styleElement(btnCancel, startX + btnWidth + spacing, btnY, btnWidth, btnHeight, 12);
+
+        setTimeout(() => {
+            if (btnCancel.element) btnCancel.element.focus();
+        }, 10);
+    }
+}
+
+function showConfirm(message, onOk, onCancel) {
+    // Backwards-compatible signature: if callbacks provided, use them.
+    if (typeof onOk === 'function' || typeof onCancel === 'function') {
+        const f = new ConfirmForm(message, onOk || (() => {}), onCancel || (() => {}));
+        f.Draw(document.body);
+        return;
+    }
+    // Promise-based API: returns true for OK, false for Cancel
+    return new Promise((resolve) => {
+        const f = new ConfirmForm(message, () => { resolve(true); }, () => { resolve(false); });
+        f.Draw(document.body);
+    });
+}
+
+// Expose confirm helper
+if (typeof window !== 'undefined') {
+    window.showConfirm = showConfirm;
+}
+
+function showAlert(message, onOk) {
+    const alertForm = new AlertForm(message, onOk);
+    alertForm.Draw(document.body);
+}
+
+// Expose to global scope
+if (typeof window !== 'undefined') {
+    window.showAlert = showAlert;
 }

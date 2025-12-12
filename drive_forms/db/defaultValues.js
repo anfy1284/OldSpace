@@ -8,7 +8,8 @@ const defaultValuesData = {
   access_roles: [
     { id: 2, name: 'admin' },
     { id: 3, name: 'public' },
-    { id: 4, name: 'nologged' }
+    { id: 4, name: 'nologged' },
+    { id: 5, name: 'user' }
   ]
 };
 
