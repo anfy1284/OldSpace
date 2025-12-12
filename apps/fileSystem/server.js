@@ -273,6 +273,35 @@ async function extractArchiveEntry(params, sessionID) {
     }
 }
 
+// Debug helper: return candidate paths and existence for a file record
+async function debugFilePath(params, sessionID) {
+    const { fileId } = params || {};
+    if (!fileId) return { error: 'fileId required' };
+    const FileModel = global.modelsDB.FileSystem_Files;
+    const fileRecord = await FileModel.findByPk(fileId);
+    if (!fileRecord) return { error: 'File not found' };
+    const p = fileRecord.filePath || '';
+    const candidates = [];
+    try {
+        if (path.isAbsolute(p)) candidates.push(p);
+    } catch (e) {}
+    candidates.push(path.join(storagePath, p));
+    candidates.push(path.join(storagePath, path.basename(p)));
+    candidates.push(p);
+
+    const results = [];
+    for (const c of candidates) {
+        try {
+            const st = await fs.stat(c);
+            results.push({ path: c, exists: true, isFile: st.isFile(), isDirectory: st.isDirectory() });
+        } catch (e) {
+            results.push({ path: c, exists: false, error: e.message });
+        }
+    }
+
+    return { fileId, filePath: p, storagePath: storagePath, storagePathResolved: path.resolve(storagePath), candidates: results };
+}
+
 module.exports = {
     uploadFile,
     getFiles,

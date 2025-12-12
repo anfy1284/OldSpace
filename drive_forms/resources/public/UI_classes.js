@@ -457,7 +457,7 @@ class Form extends UIObject {
             this.titleBar.style.color = '#ffffff';
             this.titleBar.style.fontWeight = 'bold';
             this.titleBar.style.fontSize = '14px';
-            this.titleBar.style.padding = '2px 4px';
+            this.titleBar.style.padding = '2px 2px';
             this.titleBar.style.cursor = 'default';
             this.titleBar.style.userSelect = 'none';
             this.titleBar.style.display = 'flex';
