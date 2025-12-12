@@ -29,6 +29,14 @@ if (storageType === 'local') {
     fs.mkdir(storagePath, { recursive: true }).catch(() => { });
 }
 
+async function getUserId(sessionID) {
+    if (!sessionID) return null;
+    const SessionModel = global.modelsDB.Sessions;
+    if (!SessionModel) return null;
+    const session = await SessionModel.findOne({ where: { sessionId: sessionID } });
+    return session ? session.userId : null;
+}
+
 async function uploadFile(params, sessionID, req, res) {
     // Handle file upload
     // req.file - uploaded file (from multer memoryStorage)
@@ -39,6 +47,9 @@ async function uploadFile(params, sessionID, req, res) {
     if (!file) {
         return { error: 'No file uploaded' };
     }
+
+    const userId = await getUserId(sessionID);
+    if (!userId) return { error: 'Unauthorized' };
 
     // Fix filename encoding
     const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
@@ -55,7 +66,7 @@ async function uploadFile(params, sessionID, req, res) {
         isFolder: false,
         size: file.size,
         filePath: '', // update later
-        ownerId: 1 // TODO: get from session
+        ownerId: userId
     });
 
     // Save file with unique name: id + ext
@@ -124,8 +135,14 @@ async function getFiles(params, sessionID, req, res) {
     const { parentId } = params;
     const FileModel = global.modelsDB.FileSystem_Files;
 
+    const userId = await getUserId(sessionID);
+    if (!userId) return { error: 'Unauthorized' };
+
     const files = await FileModel.findAll({
-        where: { parentId: parentId || null },
+        where: { 
+            parentId: parentId || null,
+            ownerId: userId
+        },
         include: [{ model: global.modelsDB.Users, as: 'owner' }]
     });
 
@@ -136,12 +153,15 @@ async function createFolder(params, sessionID, req, res) {
     const { name, parentId } = params;
     const FileModel = global.modelsDB.FileSystem_Files;
 
+    const userId = await getUserId(sessionID);
+    if (!userId) return { error: 'Unauthorized' };
+
     const newFolder = await FileModel.create({
         name,
         parentId: parentId || null,
         isFolder: true,
         size: 0,
-        ownerId: 1 // TODO: from session
+        ownerId: userId
     });
 
     return { success: true, folder: newFolder };
@@ -153,6 +173,10 @@ async function downloadFile(params, sessionID, req, res) {
     const fileRecord = await FileModel.findByPk(fileId);
 
     if (!fileRecord) return { error: 'File not found' };
+    
+    const userId = await getUserId(sessionID);
+    if (!userId || fileRecord.ownerId !== userId) return { error: 'Access denied' };
+
     if (fileRecord.isFolder) return { error: 'Cannot download directory' };
 
     if (storageType === 'remote_agent') {
@@ -212,6 +236,10 @@ async function downloadFile(params, sessionID, req, res) {
 async function deleteFile(params, sessionID) {
     const { fileId } = params;
     if (!fileId) return { error: 'fileId required' };
+    
+    const userId = await getUserId(sessionID);
+    if (!userId) return { error: 'Unauthorized' };
+
     const FileModel = global.modelsDB.FileSystem_Files;
     // Use a transaction so DB changes rollback if any disk operation fails
     const sequelizeInstance = FileModel.sequelize;
@@ -220,6 +248,8 @@ async function deleteFile(params, sessionID) {
             // Reload record inside transaction
             const fileRecord = await FileModel.findByPk(fileId, { transaction: t });
             if (!fileRecord) throw new Error('File not found');
+            
+            if (fileRecord.ownerId !== userId) throw new Error('Access denied');
 
             // Recursive delete function
             async function deleteNode(rec) {
@@ -282,6 +312,10 @@ async function getFolder(params, sessionID) {
     const FileModel = global.modelsDB.FileSystem_Files;
     const folder = await FileModel.findByPk(id);
     if (!folder) return { error: 'Folder not found' };
+    
+    const userId = await getUserId(sessionID);
+    if (!userId || folder.ownerId !== userId) return { error: 'Access denied' };
+
     return folder.get({ plain: true });
 }
 
@@ -318,6 +352,10 @@ async function listArchive(params, sessionID) {
     const FileModel = global.modelsDB.FileSystem_Files;
     const fileRecord = await FileModel.findByPk(fileId);
     if (!fileRecord) return { error: 'File not found' };
+    
+    const userId = await getUserId(sessionID);
+    if (!userId || fileRecord.ownerId !== userId) return { error: 'Access denied' };
+
     if (fileRecord.isFolder) return { error: 'Not a file' };
 
     if (storageType === 'remote_agent') {
@@ -359,6 +397,9 @@ async function extractArchiveEntry(params, sessionID) {
     const FileModel = global.modelsDB.FileSystem_Files;
     const fileRecord = await FileModel.findByPk(fileId);
     if (!fileRecord) return { error: 'File not found' };
+
+    const userId = await getUserId(sessionID);
+    if (!userId || fileRecord.ownerId !== userId) return { error: 'Access denied' };
 
     if (storageType === 'remote_agent') {
         // TODO: remote_agent
