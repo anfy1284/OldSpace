@@ -1,9 +1,23 @@
 {
     "level": "app",
     "autoStart": false,
-    "system": ["mySpace"],
-    "access": ["admin", "public", "user"],
+    "system": [
+        "mySpace"
+    ],
+    "access": [
+        "admin",
+        "public",
+        "user"
+    ],
     "dependencies": {},
+    "storageType": {
+        "development": "local",
+        "production": "remote_agent"
+    },
+    "supportedStorageTypes": [
+        "local",
+        "remote_agent"
+    ],
     "storagePath": "../../uploads",
     "mainMenuCommands": [
         {

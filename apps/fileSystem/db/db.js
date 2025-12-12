@@ -42,6 +42,39 @@ const models = [
                     key: 'id',
                 },
             },
+            agentId: {
+                type: 'STRING',
+                allowNull: true,
+            },
+        },
+        options: {
+            timestamps: true,
+        },
+    },
+    {
+        name: 'FileSystem_Agents',
+        tableName: 'FileSystem_Agents',
+        fields: {
+            id: {
+                type: 'STRING',
+                primaryKey: true,
+            },
+            token: {
+                type: 'STRING',
+                allowNull: false,
+            },
+            status: {
+                type: 'BOOLEAN',
+                defaultValue: false,
+            },
+            hostInfo: {
+                type: 'JSON',
+                allowNull: true,
+            },
+            lastSeen: {
+                type: 'DATE',
+                allowNull: true,
+            }
         },
         options: {
             timestamps: true,
@@ -75,6 +108,24 @@ const associations = [
         options: {
             foreignKey: 'ownerId',
             as: 'owner'
+        }
+    },
+    {
+        source: 'FileSystem_Files',
+        target: 'FileSystem_Agents',
+        type: 'belongsTo',
+        options: {
+            foreignKey: 'agentId',
+            as: 'agent'
+        }
+    },
+    {
+        source: 'FileSystem_Agents',
+        target: 'FileSystem_Files',
+        type: 'hasMany',
+        options: {
+            foreignKey: 'agentId',
+            as: 'files'
         }
     }
 ];

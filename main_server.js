@@ -48,6 +48,29 @@ dbProcess.on('exit', (code) => {
       const server = createServer(options);
       const protocol = (options.key && options.cert) ? 'https' : 'http';
       
+      // Initialize WebSockets for all apps
+      const appsDir = path.join(__dirname, 'apps');
+      if (fs.existsSync(appsDir)) {
+          const appFolders = fs.readdirSync(appsDir, { withFileTypes: true })
+              .filter(dirent => dirent.isDirectory())
+              .map(dirent => dirent.name);
+
+          for (const appName of appFolders) {
+              const appServerPath = path.join(appsDir, appName, 'server.js');
+              if (fs.existsSync(appServerPath)) {
+                  try {
+                      const appModule = require(appServerPath);
+                      if (typeof appModule.setupWebSocket === 'function') {
+                          appModule.setupWebSocket(server);
+                          console.log(`WebSocket initialized for app: ${appName}`);
+                      }
+                  } catch (e) {
+                      console.error(`Error initializing WebSocket for app ${appName}:`, e);
+                  }
+              }
+          }
+      }
+
       server.listen(PORT, () => {
         console.log(`Server running at ${protocol}://localhost:${PORT}`);
       });

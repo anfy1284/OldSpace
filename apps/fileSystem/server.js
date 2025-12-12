@@ -1,18 +1,33 @@
 // Server methods for fileSystem
 const global = require('../../drive_root/globalServerContext');
+const agentManager = require('./agentManager');
 
 const fs = require('fs').promises;
+const fsSync = require('fs');
 const path = require('path');
 const yauzl = require('yauzl');
 const { Op } = require('sequelize');
 const config = require('./config.json');
 let storagePath = config.storagePath || 'uploads';
-if (!path.isAbsolute(storagePath)) {
-    storagePath = path.resolve(__dirname, storagePath);
-}
 
-// Ensure directory exists
-fs.mkdir(storagePath, { recursive: true }).catch(() => { });
+const isProduction = process.env.NODE_ENV === 'production';
+const configStorageType = config.storageType;
+let storageType;
+
+if (typeof configStorageType === 'string') {
+    storageType = configStorageType;
+} else if (typeof configStorageType === 'object') {
+    storageType = isProduction ? configStorageType.production : configStorageType.development;
+}
+storageType = storageType || 'local';
+
+if (storageType === 'local') {
+    if (!path.isAbsolute(storagePath)) {
+        storagePath = path.resolve(__dirname, storagePath);
+    }
+    // Ensure directory exists
+    fs.mkdir(storagePath, { recursive: true }).catch(() => { });
+}
 
 async function uploadFile(params, sessionID, req, res) {
     // Handle file upload
@@ -45,14 +60,61 @@ async function uploadFile(params, sessionID, req, res) {
 
     // Save file with unique name: id + ext
     const uniqueName = `${newFile.id}${ext}`;
-    const filePath = path.join(storagePath, uniqueName);
-    console.log('Saving file to:', filePath);
-    await fs.writeFile(filePath, file.buffer);
-    console.log('File saved successfully');
 
-    // Update filePath in DB
-    const relativePath = path.relative(storagePath, filePath).replace(/\\/g, '/');
-    await newFile.update({ filePath: relativePath });
+    if (storageType === 'remote_agent') {
+        // Save to temp
+        const tempDir = path.join(__dirname, 'temp');
+        await fs.mkdir(tempDir, { recursive: true }).catch(() => {});
+        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const tempFilePath = path.join(tempDir, requestId);
+        
+        await fs.writeFile(tempFilePath, file.buffer);
+
+        // Pick an agent (first online)
+        const AgentModel = global.modelsDB.FileSystem_Agents;
+        const agent = await AgentModel.findOne({ where: { status: true } });
+        if (!agent) {
+            await fs.unlink(tempFilePath).catch(() => {});
+            await newFile.destroy();
+            return { error: 'No online agents' };
+        }
+
+        // Send command
+        const host = req.headers.host;
+        const protocol = req.connection.encrypted ? 'https' : 'http';
+        const downloadUrl = `${protocol}://${host}/api/apps/fileSystem/agent/download_temp/${requestId}`;
+
+        try {
+            await agentManager.sendCommand(agent.id, {
+                action: 'upload',
+                request_id: requestId,
+                file_info: {
+                    id: uniqueName, // Agent uses this ID
+                    name: originalName,
+                    size: file.size,
+                    owner_id: newFile.ownerId
+                },
+                download_url: downloadUrl
+            });
+            
+            // Success
+            await newFile.update({ agentId: agent.id, filePath: uniqueName });
+            await fs.unlink(tempFilePath).catch(() => {});
+        } catch (e) {
+            await fs.unlink(tempFilePath).catch(() => {});
+            await newFile.destroy();
+            return { error: 'Agent upload failed: ' + e.message };
+        }
+    } else {
+        const filePath = path.join(storagePath, uniqueName);
+        console.log('Saving file to:', filePath);
+        await fs.writeFile(filePath, file.buffer);
+        console.log('File saved successfully');
+
+        // Update filePath in DB
+        const relativePath = path.relative(storagePath, filePath).replace(/\\/g, '/');
+        await newFile.update({ filePath: relativePath });
+    }
 
     return { success: true, file: newFile };
 }
@@ -92,6 +154,44 @@ async function downloadFile(params, sessionID, req, res) {
     if (!fileRecord) return { error: 'File not found' };
     if (fileRecord.isFolder) return { error: 'Cannot download directory' };
 
+    if (storageType === 'remote_agent') {
+        if (!fileRecord.agentId) return { error: 'File has no agent assigned' };
+        
+        const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const tempDir = path.join(__dirname, 'temp');
+        await fs.mkdir(tempDir, { recursive: true }).catch(() => {});
+        const tempFilePath = path.join(tempDir, requestId);
+
+        const host = req.headers.host;
+        const protocol = req.connection.encrypted ? 'https' : 'http';
+        const uploadUrl = `${protocol}://${host}/api/apps/fileSystem/agent/upload_temp/${requestId}`;
+
+        try {
+            await agentManager.sendCommand(fileRecord.agentId, {
+                action: 'download',
+                request_id: requestId,
+                file_id: fileRecord.filePath || fileRecord.name, // Agent needs the ID it saved it with
+                upload_url: uploadUrl
+            });
+
+            // File should be at tempFilePath
+            if (await fs.stat(tempFilePath).catch(() => false)) {
+                const buffer = await fs.readFile(tempFilePath);
+                await fs.unlink(tempFilePath).catch(() => {});
+                return {
+                    file: {
+                        name: fileRecord.name,
+                        data: buffer.toString('base64')
+                    }
+                };
+            } else {
+                throw new Error('Temp file not found after agent upload');
+            }
+        } catch (e) {
+            return { error: 'Agent download failed: ' + e.message };
+        }
+    }
+
     const fullPath = await resolveStoredFilePath(fileRecord);
     if (!fullPath) return { error: 'File not found on disk: ' + (fileRecord.filePath || '') };
     try {
@@ -128,19 +228,37 @@ async function deleteFile(params, sessionID) {
                     }
                     await rec.destroy({ transaction: t });
                 } else {
-                    // Delete file from disk; if fails, throw to rollback
-                    if (rec.filePath) {
-                        const fullPath = await resolveStoredFilePath(rec);
-                        if (fullPath) {
+                    if (storageType === 'remote_agent') {
+                        if (rec.agentId) {
+                            const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                             try {
-                                await fs.unlink(fullPath);
+                                await agentManager.sendCommand(rec.agentId, {
+                                    action: 'delete',
+                                    request_id: requestId,
+                                    file_id: rec.filePath || rec.name
+                                });
                             } catch (e) {
-                                throw new Error('File unlink error: ' + e.message);
+                                console.error('Agent delete failed:', e);
+                                // We might still want to delete from DB even if agent fails?
+                                // For now, we assume strict consistency and fail.
+                                throw e;
                             }
-                        } else {
-                            // file not found on disk - consider it OK or throw depending on policy
-                            // Here we throw to notify caller
-                            throw new Error('File not found on disk: ' + rec.filePath);
+                        }
+                    } else {
+                        // Delete file from disk; if fails, throw to rollback
+                        if (rec.filePath) {
+                            const fullPath = await resolveStoredFilePath(rec);
+                            if (fullPath) {
+                                try {
+                                    await fs.unlink(fullPath);
+                                } catch (e) {
+                                    throw new Error('File unlink error: ' + e.message);
+                                }
+                            } else {
+                                // file not found on disk - consider it OK or throw depending on policy
+                                // Here we throw to notify caller
+                                throw new Error('File not found on disk: ' + rec.filePath);
+                            }
                         }
                     }
                     await rec.destroy({ transaction: t });
@@ -171,7 +289,7 @@ async function resolveStoredFilePath(fileRecord) {
     const candidates = [];
     try {
         if (path.isAbsolute(p)) candidates.push(p);
-    } catch (e) {}
+    } catch (e) { }
     candidates.push(path.join(storagePath, p));
     candidates.push(path.join(storagePath, path.basename(p)));
     // Fallback: check local uploads folder (default location)
@@ -199,6 +317,12 @@ async function listArchive(params, sessionID) {
     const fileRecord = await FileModel.findByPk(fileId);
     if (!fileRecord) return { error: 'File not found' };
     if (fileRecord.isFolder) return { error: 'Not a file' };
+
+    if (storageType === 'remote_agent') {
+        // TODO: remote_agent
+        return { error: 'Not implemented for remote_agent' };
+    }
+
     // resolve the actual on-disk path
     const fullPath = await resolveStoredFilePath(fileRecord);
     if (!fullPath) return { error: 'File not found on disk: ' + (fileRecord.filePath || '') };
@@ -216,7 +340,7 @@ async function listArchive(params, sessionID) {
                     zipfile.readEntry();
                 });
                 zipfile.on('end', () => {
-                    try { zipfile.close(); } catch (e) {}
+                    try { zipfile.close(); } catch (e) { }
                     resolve({ name: fileRecord.name, entries });
                 });
             });
@@ -233,6 +357,12 @@ async function extractArchiveEntry(params, sessionID) {
     const FileModel = global.modelsDB.FileSystem_Files;
     const fileRecord = await FileModel.findByPk(fileId);
     if (!fileRecord) return { error: 'File not found' };
+
+    if (storageType === 'remote_agent') {
+        // TODO: remote_agent
+        return { error: 'Not implemented for remote_agent' };
+    }
+
     const fullPath = await resolveStoredFilePath(fileRecord);
     if (!fullPath) return { error: 'File not found on disk: ' + (fileRecord.filePath || '') };
     try {
@@ -247,18 +377,18 @@ async function extractArchiveEntry(params, sessionID) {
                         found = true;
                         zipfile.openReadStream(entry, (err, readStream) => {
                             if (err) {
-                                try { zipfile.close(); } catch (e) {}
+                                try { zipfile.close(); } catch (e) { }
                                 return resolve({ error: 'Read stream error: ' + err.message });
                             }
                             const chunks = [];
                             readStream.on('data', (c) => chunks.push(c));
                             readStream.on('end', () => {
-                                try { zipfile.close(); } catch (e) {}
+                                try { zipfile.close(); } catch (e) { }
                                 const buf = Buffer.concat(chunks);
                                 return resolve({ file: { name: path.basename(entry.fileName), data: buf.toString('base64') } });
                             });
                             readStream.on('error', (e) => {
-                                try { zipfile.close(); } catch (ee) {}
+                                try { zipfile.close(); } catch (ee) { }
                                 return resolve({ error: 'Stream error: ' + e.message });
                             });
                         });
@@ -268,7 +398,7 @@ async function extractArchiveEntry(params, sessionID) {
                 });
                 zipfile.on('end', () => {
                     if (!found) {
-                        try { zipfile.close(); } catch (e) {}
+                        try { zipfile.close(); } catch (e) { }
                         resolve({ error: 'Entry not found' });
                     }
                 });
@@ -286,11 +416,17 @@ async function debugFilePath(params, sessionID) {
     const FileModel = global.modelsDB.FileSystem_Files;
     const fileRecord = await FileModel.findByPk(fileId);
     if (!fileRecord) return { error: 'File not found' };
+
+    if (storageType === 'remote_agent') {
+        // TODO: remote_agent
+        return { error: 'Not implemented for remote_agent' };
+    }
+
     const p = fileRecord.filePath || '';
     const candidates = [];
     try {
         if (path.isAbsolute(p)) candidates.push(p);
-    } catch (e) {}
+    } catch (e) { }
     candidates.push(path.join(storagePath, p));
     candidates.push(path.join(storagePath, path.basename(p)));
     // Fallback: check local uploads folder (default location)
@@ -311,6 +447,65 @@ async function debugFilePath(params, sessionID) {
     return { fileId, filePath: p, storagePath: storagePath, storagePathResolved: path.resolve(storagePath), candidates: results };
 }
 
+async function handleDirectRequest(req, res, pathParts) {
+    // pathParts comes from /api/apps/fileSystem/...
+    // Expected: ['agent', 'download_temp', requestId] or ['agent', 'upload_temp', requestId]
+    
+    if (pathParts[0] !== 'agent') {
+        res.writeHead(404);
+        res.end('Unknown endpoint');
+        return;
+    }
+
+    const action = pathParts[1]; 
+    const requestId = pathParts[2];
+
+    if (!requestId) {
+        res.writeHead(400);
+        res.end('Missing requestId');
+        return;
+    }
+
+    const tempDir = path.join(__dirname, 'temp');
+    await fs.mkdir(tempDir, { recursive: true }).catch(() => {});
+    const tempFilePath = path.join(tempDir, requestId);
+
+    if (action === 'download_temp') {
+        // Agent wants to download file (User Upload flow)
+        try {
+            const stat = await fs.stat(tempFilePath);
+            res.writeHead(200, {
+                'Content-Type': 'application/octet-stream',
+                'Content-Length': stat.size
+            });
+            const stream = fsSync.createReadStream(tempFilePath);
+            stream.pipe(res);
+        } catch (e) {
+            res.writeHead(404);
+            res.end('File not found');
+        }
+    } else if (action === 'upload_temp') {
+        // Agent wants to upload file (User Download flow)
+        const stream = fsSync.createWriteStream(tempFilePath);
+        req.pipe(stream);
+        stream.on('finish', () => {
+            res.writeHead(200);
+            res.end(JSON.stringify({ status: 'success' }));
+        });
+        stream.on('error', (e) => {
+            res.writeHead(500);
+            res.end(e.message);
+        });
+    } else {
+        res.writeHead(404);
+        res.end('Unknown action');
+    }
+}
+
+function setupWebSocket(server) {
+    agentManager.setupWebSocket(server);
+}
+
 module.exports = {
     uploadFile,
     getFiles,
@@ -320,5 +515,7 @@ module.exports = {
     getFolder,
     listArchive,
     extractArchiveEntry,
-    debugFilePath
+    debugFilePath,
+    handleDirectRequest,
+    setupWebSocket
 };

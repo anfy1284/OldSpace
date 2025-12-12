@@ -68,6 +68,27 @@ function checkProtectedAccess(sessionId, filePath) {
 
 async function handleRequest(req, res) {
     console.log('[drive_root] Request:', req.method, req.url);
+
+    // Universal App API routing: /api/apps/:appName/...
+    if (req.url.startsWith('/api/apps/')) {
+        const parts = req.url.split('/'); // ['', 'api', 'apps', 'appName', ...]
+        if (parts.length >= 4) {
+            const appName = parts[3];
+            const appServerPath = path.join(__dirname, '..', 'apps', appName, 'server.js');
+            if (fs.existsSync(appServerPath)) {
+                try {
+                    const appModule = require(appServerPath);
+                    if (typeof appModule.handleDirectRequest === 'function') {
+                        await appModule.handleDirectRequest(req, res, parts.slice(4));
+                        return;
+                    }
+                } catch (e) {
+                    console.error(`Error handling direct request for app ${appName}:`, e);
+                }
+            }
+        }
+    }
+
     await getOrCreateSession(req, res);
 
     // Handle favicon
