@@ -81,7 +81,8 @@ async function uploadFile(params, sessionID, req, res) {
 
         // Send command
         const host = req.headers.host;
-        const protocol = req.connection.encrypted ? 'https' : 'http';
+        // Check X-Forwarded-Proto for proxies (Koyeb, Heroku, etc.)
+        const protocol = req.headers['x-forwarded-proto'] || (req.connection.encrypted ? 'https' : 'http');
         const downloadUrl = `${protocol}://${host}/api/apps/fileSystem/agent/download_temp/${requestId}`;
 
         try {
@@ -163,7 +164,8 @@ async function downloadFile(params, sessionID, req, res) {
         const tempFilePath = path.join(tempDir, requestId);
 
         const host = req.headers.host;
-        const protocol = req.connection.encrypted ? 'https' : 'http';
+        // Check X-Forwarded-Proto for proxies (Koyeb, Heroku, etc.)
+        const protocol = req.headers['x-forwarded-proto'] || (req.connection.encrypted ? 'https' : 'http');
         const uploadUrl = `${protocol}://${host}/api/apps/fileSystem/agent/upload_temp/${requestId}`;
 
         try {
