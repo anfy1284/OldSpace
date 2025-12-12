@@ -89,7 +89,8 @@ async function downloadFile(params, sessionID, req, res) {
     if (!fileRecord) return { error: 'File not found' };
     if (fileRecord.isFolder) return { error: 'Cannot download directory' };
 
-    const fullPath = path.join(storagePath, fileRecord.filePath);
+    const fullPath = await resolveStoredFilePath(fileRecord);
+    if (!fullPath) return { error: 'File not found on disk: ' + (fileRecord.filePath || '') };
     try {
         const buffer = await fs.readFile(fullPath);
         return {
@@ -126,11 +127,17 @@ async function deleteFile(params, sessionID) {
                 } else {
                     // Delete file from disk; if fails, throw to rollback
                     if (rec.filePath) {
-                        const fullPath = path.join(storagePath, rec.filePath);
-                        try {
-                            await fs.unlink(fullPath);
-                        } catch (e) {
-                            throw new Error('File unlink error: ' + e.message);
+                        const fullPath = await resolveStoredFilePath(rec);
+                        if (fullPath) {
+                            try {
+                                await fs.unlink(fullPath);
+                            } catch (e) {
+                                throw new Error('File unlink error: ' + e.message);
+                            }
+                        } else {
+                            // file not found on disk - consider it OK or throw depending on policy
+                            // Here we throw to notify caller
+                            throw new Error('File not found on disk: ' + rec.filePath);
                         }
                     }
                     await rec.destroy({ transaction: t });
@@ -155,6 +162,29 @@ async function getFolder(params, sessionID) {
     return folder.get({ plain: true });
 }
 
+// Helper: resolve stored file path with a few fallbacks (absolute, joined with storagePath, basename)
+async function resolveStoredFilePath(fileRecord) {
+    const p = fileRecord.filePath || '';
+    const candidates = [];
+    try {
+        if (path.isAbsolute(p)) candidates.push(p);
+    } catch (e) {}
+    candidates.push(path.join(storagePath, p));
+    candidates.push(path.join(storagePath, path.basename(p)));
+    candidates.push(p);
+
+    for (const c of candidates) {
+        try {
+            // use fs.stat to check existence
+            await fs.stat(c);
+            return c;
+        } catch (e) {
+            // ignore
+        }
+    }
+    return null;
+}
+
 // List entries inside zip archive (no temp files written)
 async function listArchive(params, sessionID) {
     const { fileId } = params;
@@ -163,8 +193,9 @@ async function listArchive(params, sessionID) {
     const fileRecord = await FileModel.findByPk(fileId);
     if (!fileRecord) return { error: 'File not found' };
     if (fileRecord.isFolder) return { error: 'Not a file' };
-
-    const fullPath = path.join(storagePath, fileRecord.filePath);
+    // resolve the actual on-disk path
+    const fullPath = await resolveStoredFilePath(fileRecord);
+    if (!fullPath) return { error: 'File not found on disk: ' + (fileRecord.filePath || '') };
     try {
         const buffer = await fs.readFile(fullPath);
         return await new Promise((resolve) => {
@@ -196,8 +227,8 @@ async function extractArchiveEntry(params, sessionID) {
     const FileModel = global.modelsDB.FileSystem_Files;
     const fileRecord = await FileModel.findByPk(fileId);
     if (!fileRecord) return { error: 'File not found' };
-
-    const fullPath = path.join(storagePath, fileRecord.filePath);
+    const fullPath = await resolveStoredFilePath(fileRecord);
+    if (!fullPath) return { error: 'File not found on disk: ' + (fileRecord.filePath || '') };
     try {
         const buffer = await fs.readFile(fullPath);
         return await new Promise((resolve) => {
