@@ -28,6 +28,8 @@ const global = require('../../drive_root/globalServerContext');
                 } else {
                     console.log(`[FileSystem] Agent ${agentId} is ready.`);
                 }
+            } else {
+                console.error('[FileSystem] Error: FileSystem_Agents model not found in global.modelsDB');
             }
         } catch (e) {
             console.error('[FileSystem] Error ensuring agent from env:', e);

@@ -58,39 +58,59 @@ class AgentManager extends EventEmitter {
             }
 
             if (pathname === '/ws') {
+                console.log('[AgentManager] Upgrading connection for /ws');
                 this.wss.handleUpgrade(request, socket, head, (ws) => {
                     this.wss.emit('connection', ws, request);
                 });
+            } else {
+                // console.log('[AgentManager] Ignoring upgrade for path:', pathname);
             }
         });
 
-        this.wss.on('connection', (ws) => {
-            console.log('New WebSocket connection');
+        this.wss.on('connection', (ws, req) => {
+            const ip = req.socket.remoteAddress;
+            console.log(`[AgentManager] New WebSocket connection from ${ip}`);
             let authenticated = false;
             let agentId = null;
 
             ws.on('message', async (message) => {
+                console.log(`[AgentManager] Received message from ${ip}:`, message.toString().slice(0, 200)); // Log first 200 chars
                 try {
                     const data = JSON.parse(message);
 
                     if (!authenticated) {
                         if (data.action === 'auth') {
                             const { token, agent_id } = data;
+                            console.log(`[AgentManager] Auth attempt for agent_id: ${agent_id}`);
+                            
                             // Verify token
                             const AgentModel = global.modelsDB.FileSystem_Agents;
+                            if (!AgentModel) {
+                                console.error('[AgentManager] Critical Error: FileSystem_Agents model not found!');
+                                ws.send(JSON.stringify({ status: 'error', message: 'Server internal error' }));
+                                ws.close();
+                                return;
+                            }
+
                             const agent = await AgentModel.findOne({ where: { id: agent_id } });
 
-                            if (agent && agent.token === token) {
+                            if (!agent) {
+                                console.warn(`[AgentManager] Auth failed: Agent ${agent_id} not found in DB`);
+                                ws.send(JSON.stringify({ status: 'error', message: 'Invalid agent_id' }));
+                                ws.close();
+                            } else if (agent.token !== token) {
+                                console.warn(`[AgentManager] Auth failed: Invalid token for agent ${agent_id}`);
+                                ws.send(JSON.stringify({ status: 'error', message: 'Invalid token' }));
+                                ws.close();
+                            } else {
                                 authenticated = true;
                                 agentId = agent_id;
                                 await this.connectionManager.connect(agentId, ws);
                                 ws.send(JSON.stringify({ status: 'ok' }));
-                                console.log(`Agent ${agentId} authenticated`);
-                            } else {
-                                ws.send(JSON.stringify({ status: 'error', message: 'Invalid token or agent_id' }));
-                                ws.close();
+                                console.log(`[AgentManager] Agent ${agentId} successfully authenticated`);
                             }
                         } else {
+                            console.warn(`[AgentManager] Unauthenticated message received (not auth):`, data.action);
                             ws.close();
                         }
                         return;
