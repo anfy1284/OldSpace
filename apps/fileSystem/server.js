@@ -310,5 +310,6 @@ module.exports = {
     deleteFile,
     getFolder,
     listArchive,
-    extractArchiveEntry
+    extractArchiveEntry,
+    debugFilePath
 };
