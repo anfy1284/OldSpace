@@ -174,6 +174,9 @@ async function resolveStoredFilePath(fileRecord) {
     } catch (e) {}
     candidates.push(path.join(storagePath, p));
     candidates.push(path.join(storagePath, path.basename(p)));
+    // Fallback: check local uploads folder (default location)
+    candidates.push(path.join(__dirname, 'uploads', p));
+    candidates.push(path.join(__dirname, 'uploads', path.basename(p)));
     candidates.push(p);
 
     for (const c of candidates) {
@@ -290,6 +293,9 @@ async function debugFilePath(params, sessionID) {
     } catch (e) {}
     candidates.push(path.join(storagePath, p));
     candidates.push(path.join(storagePath, path.basename(p)));
+    // Fallback: check local uploads folder (default location)
+    candidates.push(path.join(__dirname, 'uploads', p));
+    candidates.push(path.join(__dirname, 'uploads', path.basename(p)));
     candidates.push(p);
 
     const results = [];
