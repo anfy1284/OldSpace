@@ -49,7 +49,13 @@ class AgentManager extends EventEmitter {
         this.wss = new WebSocket.Server({ noServer: true });
 
         server.on('upgrade', (request, socket, head) => {
-            const pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
+            // Handle relative URLs or full URLs
+            let pathname;
+            try {
+                pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
+            } catch (e) {
+                pathname = request.url;
+            }
 
             if (pathname === '/ws') {
                 this.wss.handleUpgrade(request, socket, head, (ws) => {
