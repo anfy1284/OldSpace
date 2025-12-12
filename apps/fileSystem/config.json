@@ -4,7 +4,7 @@
     "system": ["mySpace"],
     "access": ["admin", "public", "user"],
     "dependencies": {},
-    "storagePath": "./uploads",
+    "storagePath": "../../uploads",
     "mainMenuCommands": [
         {
             "id": "main",
