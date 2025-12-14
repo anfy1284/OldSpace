@@ -142,11 +142,21 @@ async function saveSettings(params, sessionID) {
 
             // Prepare value based on type
             let preparedValue = value;
-            if (field.typeId === 2) {
+            const typeId = Number(field.typeId);
+            if (typeId === 2) {
                 // Number: parse and handle invalid numbers (avoid NaN stored in DB)
-                preparedValue = parseFloat(value);
-                if (isNaN(preparedValue)) preparedValue = null;
-            } else if (field.typeId === 3) {
+                if (value === null || value === undefined || value === '') {
+                    preparedValue = null;
+                } else {
+                    const num = (typeof value === 'number') ? value : Number(value);
+                    if (!Number.isFinite(num)) {
+                        console.warn('[UserSettings] Invalid number value for field:', field.name, value);
+                        preparedValue = null;
+                    } else {
+                        preparedValue = num;
+                    }
+                }
+            } else if (typeId === 3) {
                 // Boolean
                 preparedValue = value === true || value === 'true';
             } else if (field.typeId === 4) {
