@@ -32,6 +32,10 @@
         {
             "name": "fileSystem",
             "path": "/fileSystem"
+        },
+        {
+            "name": "UserSettings",
+            "path": "/UserSettings"
         }
     ]
 }

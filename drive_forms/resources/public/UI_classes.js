@@ -218,7 +218,10 @@ class Form extends UIObject {
         this.restoreX = 0;
         this.restoreY = 0;
         this.restoreWidth = 0;
+        this.restoreWidth = 0;
         this.restoreHeight = 0;
+        this.proportionalLayout = false;
+        this.layoutTarget = null;
     }
 
     activate() {
@@ -351,10 +354,10 @@ class Form extends UIObject {
                 this.modalOverlay.style.width = '100%';
                 this.modalOverlay.style.height = '100%';
                 // Transparent but blocking
-                this.modalOverlay.style.backgroundColor = 'transparent'; 
+                this.modalOverlay.style.backgroundColor = 'transparent';
                 this.modalOverlay.style.zIndex = this.z - 1; // Behind the form
                 document.body.appendChild(this.modalOverlay);
-                
+
                 // Prevent clicks on overlay
                 this.modalOverlay.addEventListener('mousedown', (e) => {
                     e.stopPropagation();
@@ -399,6 +402,9 @@ class Form extends UIObject {
         if (this.element) {
             this.element.style.left = this.x + 'px';
             this.element.style.top = this.y + 'px';
+        }
+        if (this.proportionalLayout) {
+            this.updateProportionalLayout();
         }
     }
 
@@ -819,6 +825,9 @@ class Form extends UIObject {
                         }
                         // Call onResizing during resize
                         this.onResizing();
+                        if (this.proportionalLayout) {
+                            this.updateProportionalLayout();
+                        }
                     }
                 });
 
@@ -1038,6 +1047,136 @@ class Form extends UIObject {
 
     onResize() {
         // Handle resize event (called after resize completes)
+        if (this.proportionalLayout) {
+            this.updateProportionalLayout();
+        }
+    }
+
+    setProportionalLayout(value) {
+        this.proportionalLayout = value;
+        if (value) {
+            this.updateProportionalLayout();
+        }
+    }
+
+    getProportionalLayout() {
+        return this.proportionalLayout;
+    }
+
+    setLayoutTarget(target) {
+        this.layoutTarget = target;
+        if (this.proportionalLayout) {
+            this.updateProportionalLayout();
+        }
+    }
+
+    getLayoutTarget() {
+        return this.layoutTarget;
+    }
+
+    updateProportionalLayout() {
+        const container = this.layoutTarget || this.contentArea;
+        if (!container) return;
+
+        // Get container dimensions
+        let containerWidth = 0;
+        if (container === this.contentArea) {
+            containerWidth = this.width;
+            // If borders are present, subtract them?
+            // Form border is usually handled by box-sizing, but contentArea is inside.
+        } else {
+            containerWidth = container.clientWidth || parseInt(container.style.width) || 0;
+            if (containerWidth === 0 && container.parentElement) {
+                // Fallback if clientWidth is 0 (detached) involves guessing or waiting?
+                // Try to estimate from parent if standard
+            }
+        }
+
+        // If container is not attached or has no width yet, we might need to rely on the form width
+        if (containerWidth <= 0 && this.layoutTarget && this.layoutTarget.parentElement === this.contentArea) {
+            containerWidth = this.width - 20; // approximate padding
+        }
+        if (containerWidth <= 0) containerWidth = this.width;
+
+        // 1. Collect relevant children (those that are direct children of the target)
+        // Since UIObject children are logical, we need to filter those that are conceptually "in" this target.
+        // If layoutTarget is set, we can match children's parentElement? 
+        // Or simply iterate all logical children and check if their element is in container.
+
+        // However, UIObject.children array is what we have.
+        // Let's assume we are arranging the logical children of the Form (or the specialized container if we had a Container class).
+        // But here 'this' is the Form. The children might be added to the Form object or just placed in the DOM.
+        // The user's code in client.js does: new Label(null) -> draw(scrollContainer).
+        // These are NOT logical children of the Form (form.children is empty).
+        // So we must look at the DOM elements inside the container.
+
+        const children = Array.from(container.children).filter(el => {
+            // Filter out internal helpers like specific spacers if needed, or hidden elements
+            if (el.style.display === 'none') return false;
+            if (el.tagName === 'CANVAS') return false; // ignore helper canvases if any (e.g. funny decorations)
+            // We only want "UI elements"
+            // Let's rely on checking if they have absolute position or looking for our class marks?
+            // The user wants "elements on the form".
+            return true;
+        });
+
+        if (children.length === 0) return;
+
+        // 2. Group by Y coordinate (Row detection)
+        const tolerance = 10; // pixels
+        const rows = [];
+
+        children.forEach(el => {
+            if (el.style.position === 'absolute') {
+                const y = parseInt(el.style.top) || 0;
+
+                // Find existing row
+                let row = rows.find(r => Math.abs(r.y - y) < tolerance);
+                if (!row) {
+                    row = { y: y, elements: [] };
+                    rows.push(row);
+                }
+                row.elements.push(el);
+            }
+        });
+
+        // 3. Sort rows by Y
+        rows.sort((a, b) => a.y - b.y);
+
+        // 4. Process each row
+        const paddingLeft = 10;
+        const paddingRight = 10;
+        const spacing = 10;
+        const availableWidth = containerWidth - paddingLeft - paddingRight;
+
+        rows.forEach(row => {
+            // Sort elements by X
+            row.elements.sort((a, b) => {
+                const ax = parseInt(a.style.left) || 0;
+                const bx = parseInt(b.style.left) || 0;
+                return ax - bx;
+            });
+
+            const count = row.elements.length;
+            if (count === 0) return;
+
+            // Calculate width for each element
+            // (Available - (count - 1) * spacing) / count
+            const itemWidth = Math.floor((availableWidth - (count - 1) * spacing) / count);
+
+            row.elements.forEach((el, index) => {
+                const newX = paddingLeft + index * (itemWidth + spacing);
+                el.style.left = newX + 'px';
+                el.style.width = itemWidth + 'px';
+
+                // Update logical X/Width if the element has a JS wrapper attached
+                // We stored 'this' in '_formInstance' for Form, but for generic UIObjects?
+                // We didn't store the instance on the element for normal controls in previous code (except Form).
+                // Let's check existing code...
+                // UI_classes.js: Button class -> no reference on element.
+                // But we can try to update styles directly which we did.
+            });
+        });
     }
 }
 
@@ -1785,6 +1924,90 @@ class RadioButton extends UIObject {
     }
 }
 
+class RadioGroup extends UIObject {
+    constructor(parentElement = null) {
+        super();
+        this.parentElement = parentElement;
+        this.items = [];
+        this.value = null;
+        this.groupName = 'radiogroup_' + Math.random().toString(36).substr(2, 9);
+        this.radios = [];
+    }
+
+    setItems(items) {
+        this.items = items;
+    }
+
+    setGroupName(name) {
+        this.groupName = name;
+        this.radios.forEach(r => r.setGroup(name));
+    }
+
+    setValue(value) {
+        this.value = value;
+        this.radios.forEach(r => {
+            if (r.text === value) {
+                r.setChecked(true);
+            } else {
+                r.setChecked(false);
+            }
+        });
+    }
+
+    getValue() {
+        const checked = this.radios.find(r => r.checked);
+        return checked ? checked.text : null;
+    }
+
+    Draw(container) {
+        if (!this.element) {
+            this.element = document.createElement('div');
+            this.element.style.position = 'absolute';
+
+            const itemHeight = 20;
+            const totalHeight = this.items.length * itemHeight;
+            this.setHeight(totalHeight);
+
+            if (!this.parentElement) {
+                this.element.style.left = this.x + 'px';
+                this.element.style.top = this.y + 'px';
+                this.element.style.width = this.width + 'px';
+                this.element.style.height = this.height + 'px';
+            }
+
+            this.items.forEach((item, idx) => {
+                const rb = new RadioButton(null);
+                rb.setText(item);
+                rb.setGroup(this.groupName);
+                rb.setX(0); // Relative to group container
+                rb.setY(idx * itemHeight);
+
+                if (this.value === item) {
+                    rb.setChecked(true);
+                }
+
+                this.radios.push(rb);
+                rb.Draw(this.element);
+
+                const originalOnClick = rb.onClick;
+                rb.onClick = (e) => {
+                    this.value = item;
+                    this.radios.forEach(other => {
+                        if (other !== rb) other.setChecked(false);
+                    });
+                    if (originalOnClick) originalOnClick(e);
+                };
+            });
+        }
+
+        if (container) container.appendChild(this.element);
+
+        if (this.width > 0 && this.element) this.element.style.width = this.width + 'px';
+
+        return this.element;
+    }
+}
+
 // Common base for modal dialogs (Alert, Confirm, etc.)
 class ModalForm extends Form {
     constructor(title = '', width = 300, height = 150) {
@@ -1858,7 +2081,7 @@ class AlertForm extends ModalForm {
         // store reference so callers can access if needed
         this.okButton = btnOk;
         setTimeout(() => {
-            try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e) {}
+            try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e) { }
             if (this.okButton && this.okButton.element) this.okButton.element.focus();
         }, 50);
     }
@@ -1922,7 +2145,7 @@ class ConfirmForm extends ModalForm {
 function showConfirm(message, onOk, onCancel) {
     // Backwards-compatible signature: if callbacks provided, use them.
     if (typeof onOk === 'function' || typeof onCancel === 'function') {
-        const f = new ConfirmForm(message, onOk || (() => {}), onCancel || (() => {}));
+        const f = new ConfirmForm(message, onOk || (() => { }), onCancel || (() => { }));
         f.Draw(document.body);
         return;
     }
@@ -1936,6 +2159,259 @@ function showConfirm(message, onOk, onCancel) {
 // Expose confirm helper
 if (typeof window !== 'undefined') {
     window.showConfirm = showConfirm;
+}
+
+
+class ComboBox extends UIObject {
+    constructor(parentElement = null) {
+        super();
+        this.parentElement = parentElement;
+        this.items = []; // Array of strings or objects {label, value}
+        this.selectedIndex = -1;
+        this.text = '';
+        this.expanded = false;
+        this.onChange = null;
+        this.listElement = null; // The dropdown list container
+    }
+
+    setItems(items) {
+        this.items = items;
+        if (this.selectedIndex >= items.length) {
+            this.selectedIndex = -1;
+            this.setText('');
+        }
+    }
+
+    setSelectedIndex(index) {
+        if (index >= 0 && index < this.items.length) {
+            this.selectedIndex = index;
+            const item = this.items[index];
+            this.setText(typeof item === 'object' ? item.label : item);
+        } else {
+            this.selectedIndex = -1;
+            this.setText('');
+        }
+    }
+
+    setText(text) {
+        this.text = text;
+        if (this.inputElement) {
+            this.inputElement.value = text;
+        }
+    }
+
+    getText() {
+        return this.text;
+    }
+
+    toggle() {
+        if (this.expanded) this.collapse();
+        else this.expand();
+    }
+
+    expand() {
+        if (this.expanded) return;
+        this.expanded = true;
+        this.drawList();
+    }
+
+    collapse() {
+        if (!this.expanded) return;
+        this.expanded = false;
+        if (this.listElement) {
+            this.listElement.remove();
+            this.listElement = null;
+        }
+        // Remove global click listener
+        if (this._clickOutsideHandler) {
+            document.removeEventListener('mousedown', this._clickOutsideHandler);
+            this._clickOutsideHandler = null;
+        }
+    }
+
+    drawList() {
+        if (this.listElement) this.listElement.remove();
+
+        // Create dropdown list absolute positioned relative to body or nearest relative parent
+        // For simplicity, attach to body and calculate absolute position
+        this.listElement = document.createElement('div');
+        this.listElement.style.position = 'absolute';
+        this.listElement.style.backgroundColor = '#ffffff';
+        this.listElement.style.border = '1px solid #000000';
+        this.listElement.style.zIndex = 100000; // Very high z-index
+        this.listElement.style.fontFamily = 'MS Sans Serif, sans-serif';
+        this.listElement.style.fontSize = '11px';
+        this.listElement.style.boxSizing = 'border-box';
+        this.listElement.style.overflowY = 'auto';
+        this.listElement.style.maxHeight = '150px';
+        this.listElement.style.cursor = 'default';
+
+        // Calculate position
+        const rect = this.element.getBoundingClientRect();
+        this.listElement.style.left = rect.left + 'px';
+        this.listElement.style.top = (rect.bottom) + 'px';
+        this.listElement.style.width = this.width + 'px'; // width matches combobox
+
+        // Add items
+        this.items.forEach((item, index) => {
+            const div = document.createElement('div');
+            const label = typeof item === 'object' ? item.label : item;
+            div.textContent = label;
+            div.style.padding = '2px 4px';
+            div.style.whiteSpace = 'nowrap';
+
+            if (index === this.selectedIndex) {
+                div.style.backgroundColor = '#000080';
+                div.style.color = '#ffffff';
+            } else {
+                div.style.backgroundColor = '#ffffff';
+                div.style.color = '#000000';
+            }
+
+            div.onmouseover = () => {
+                if (index !== this.selectedIndex) {
+                    div.style.backgroundColor = '#000080';
+                    div.style.color = '#ffffff';
+                }
+            };
+            div.onmouseout = () => {
+                if (index !== this.selectedIndex) {
+                    div.style.backgroundColor = '#ffffff';
+                    div.style.color = '#000000';
+                }
+            };
+
+            div.onmousedown = (e) => {
+                e.stopPropagation(); // Prevent closing immediately
+                this.setSelectedIndex(index);
+                this.collapse();
+                if (this.onChange) this.onChange(index, item);
+            }
+            this.listElement.appendChild(div);
+        });
+
+        document.body.appendChild(this.listElement);
+
+        // Add click outside listener
+        this._clickOutsideHandler = (e) => {
+            if (!this.element.contains(e.target) && !this.listElement.contains(e.target)) {
+                this.collapse();
+            }
+        };
+        document.addEventListener('mousedown', this._clickOutsideHandler);
+    }
+
+    Draw(container) {
+        if (!this.element) {
+            this.element = document.createElement('div');
+            this.element.style.display = 'flex';
+            this.element.style.alignItems = 'center';
+            this.element.style.boxSizing = 'border-box';
+
+            // Positioning
+            if (!this.parentElement) {
+                this.element.style.position = 'absolute';
+                this.element.style.left = this.x + 'px';
+                this.element.style.top = this.y + 'px';
+            } else {
+                this.element.style.position = 'relative';
+            }
+            this.element.style.width = this.width + 'px';
+            this.element.style.height = this.height + 'px';
+            this.element.style.zIndex = this.z;
+
+            // Border style (Sunken)
+            this.element.style.backgroundColor = '#ffffff';
+            this.element.style.borderTop = '2px solid #808080';
+            this.element.style.borderLeft = '2px solid #808080';
+            this.element.style.borderRight = '2px solid #ffffff';
+            this.element.style.borderBottom = '2px solid #ffffff';
+
+            // Text input part
+            this.inputElement = document.createElement('input');
+            this.inputElement.type = 'text';
+            this.inputElement.readOnly = true; // Typically read-only for simple dropdown
+            this.inputElement.value = this.text;
+            this.inputElement.style.flex = '1';
+            this.inputElement.style.border = 'none';
+            this.inputElement.style.outline = 'none';
+            this.inputElement.style.fontFamily = 'MS Sans Serif, sans-serif';
+            this.inputElement.style.fontSize = '11px';
+            this.inputElement.style.padding = '1px 4px';
+            this.inputElement.style.margin = '0';
+            this.inputElement.style.backgroundColor = 'transparent';
+            this.inputElement.style.cursor = 'default';
+
+            this.element.appendChild(this.inputElement);
+
+            // Arrow button
+            const btn = document.createElement('button');
+            btn.style.width = '16px';
+            btn.style.height = '100%';
+            btn.style.borderTop = '2px solid #ffffff';
+            btn.style.borderLeft = '2px solid #ffffff';
+            btn.style.borderRight = '2px solid #808080';
+            btn.style.borderBottom = '2px solid #808080';
+            btn.style.backgroundColor = '#c0c0c0';
+            btn.style.display = 'flex';
+            btn.style.alignItems = 'center';
+            btn.style.justifyContent = 'center';
+            btn.style.cursor = 'default';
+            btn.style.padding = '0';
+            btn.style.margin = '0';
+            btn.style.outline = 'none';
+            btn.tabIndex = -1;
+
+            // Arrow icon (canvas)
+            const cvs = document.createElement('canvas');
+            cvs.width = 8;
+            cvs.height = 4;
+            const ctx = cvs.getContext('2d');
+            ctx.fillStyle = '#000000';
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(8, 0);
+            ctx.lineTo(4, 4);
+            ctx.fill();
+            btn.appendChild(cvs);
+
+            // Button press effect
+            btn.onmousedown = (e) => {
+                e.preventDefault(); // prevent focus transfer
+                btn.style.borderTop = '2px solid #808080';
+                btn.style.borderLeft = '2px solid #808080';
+                btn.style.borderRight = '2px solid #ffffff';
+                btn.style.borderBottom = '2px solid #ffffff';
+                cvs.style.transform = 'translate(1px, 1px)';
+                this.toggle();
+            };
+            btn.onmouseup = () => {
+                btn.style.borderTop = '2px solid #ffffff';
+                btn.style.borderLeft = '2px solid #ffffff';
+                btn.style.borderRight = '2px solid #808080';
+                btn.style.borderBottom = '2px solid #808080';
+                cvs.style.transform = 'translate(0, 0)';
+            };
+            btn.onmouseout = () => {
+                btn.style.borderTop = '2px solid #ffffff';
+                btn.style.borderLeft = '2px solid #ffffff';
+                btn.style.borderRight = '2px solid #808080';
+                btn.style.borderBottom = '2px solid #808080';
+                cvs.style.transform = 'translate(0, 0)';
+            };
+
+            this.element.appendChild(btn);
+
+            // Handle clicking the text box to toggle also
+            this.inputElement.onmousedown = (e) => {
+                e.preventDefault();
+                this.toggle();
+            };
+        }
+
+        if (container) container.appendChild(this.element);
+        return this.element;
+    }
 }
 
 function showAlert(message, onOk) {

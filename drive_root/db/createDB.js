@@ -64,6 +64,37 @@ function getSequelizeInstance() {
   });
 }
 
+function mergeModelDefinitions(allDefs) {
+  const mergedMap = new Map();
+
+  for (const def of allDefs) {
+    if (!mergedMap.has(def.name)) {
+      // Deep clone to start
+      mergedMap.set(def.name, JSON.parse(JSON.stringify(def)));
+    } else {
+      const current = mergedMap.get(def.name);
+
+      // Merge fields: later definitions overwrite/extend earlier ones
+      current.fields = { ...current.fields, ...def.fields };
+
+      // Merge options
+      if (def.options) {
+        const oldIndexes = current.options.indexes || [];
+        const newIndexes = def.options.indexes || [];
+
+        current.options = { ...current.options, ...def.options };
+
+        // Merge indexes intelligently: combine arrays
+        if (oldIndexes.length || newIndexes.length) {
+          current.options.indexes = [...oldIndexes, ...newIndexes];
+        }
+      }
+    }
+  }
+
+  return Array.from(mergedMap.values());
+}
+
 async function createAll() {
   await ensureDatabase();
   const sequelize = getSequelizeInstance();
@@ -90,9 +121,13 @@ async function createAll() {
       }
     }
   }
-  const allModelsDef = [...modelsDef, ...appModelDefs];
 
-  // Generate models
+  // 1. Merge definitions (Base + Apps)
+  const rawModelsDef = [...modelsDef, ...appModelDefs];
+  const allModelsDef = mergeModelDefinitions(rawModelsDef);
+  console.log(`[MIGRATION] Total models after merge: ${allModelsDef.length}`);
+
+  // 2. Initialize Models
   const models = {};
   for (const def of allModelsDef) {
     const fields = {};
@@ -109,95 +144,117 @@ async function createAll() {
   try {
     console.log('[MIGRATION] Starting database schema check...');
 
-    // Check schema for each model
+    // 3. Analysis Phase: Identify tables that need migration
+    const tablesToMigrate = [];
+
     for (const def of allModelsDef) {
       const tableName = def.tableName;
-      console.log(`[MIGRATION] Checking table: ${tableName}`);
 
-      // Get table description from DB
       const tableExists = await sequelize.getQueryInterface().describeTable(tableName, { transaction }).catch(() => null);
 
       if (!tableExists) {
-        console.log(`[MIGRATION] Table ${tableName} does not exist, creating...`);
-        await models[def.name].sync({ transaction });
-        console.log(`[MIGRATION] Table ${tableName} created.`);
+        console.log(`[MIGRATION] New table detected (will be created): ${tableName}`);
         continue;
       }
 
-      // Compare schemas
       const currentSchema = tableExists;
       const desiredSchema = def.fields;
 
       const cmp = await compareSchemas(currentSchema, desiredSchema);
-      let needsMigration = cmp.needsMigration;
-      const differences = cmp.differences;
 
-      if (!needsMigration) {
-        console.log(`[MIGRATION] Table ${tableName} matches schema, no changes needed.`);
-        // Sync unique constraints if present in DB but removed from model
-        await syncUniqueConstraints(sequelize, transaction, tableName, desiredSchema);
-        continue;
-      }
-
-      console.log(`[MIGRATION] Table ${tableName} needs migration:`);
-      differences.forEach(diff => console.log(`  ${diff}`));
-      const tempTableName = `${tableName}_temp_backup`;
-      console.log(`[MIGRATION] Creating temp table: ${tempTableName}`);
-
-      await sequelize.query(
-        `CREATE TABLE "${tempTableName}" AS SELECT * FROM "${tableName}"`,
-        { transaction }
-      );
-      console.log(`[MIGRATION] Data copied to temp table.`);
-
-      await sequelize.query(`DROP TABLE "${tableName}" CASCADE`, { transaction });
-      console.log(`[MIGRATION] Old table dropped.`);
-
-      await models[def.name].sync({ transaction });
-      console.log(`[MIGRATION] New table created with updated schema.`);
-
-      // Remove obsolete unique constraints after recreation
-      await syncUniqueConstraints(sequelize, transaction, tableName, desiredSchema);
-
-      // Copy data back (only matching fields)
-      const commonFields = Object.keys(desiredSchema).filter(field => currentSchema[field]);
-
-      if (commonFields.length > 0) {
-        // Copy data row by row via Sequelize to auto-fill timestamps
-        const rows = await sequelize.query(`SELECT * FROM "${tempTableName}"`, {
-          transaction,
-          type: Sequelize.QueryTypes.SELECT
+      if (cmp.needsMigration) {
+        console.log(`[MIGRATION] Table ${tableName} needs migration. Diffs:`, cmp.differences);
+        tablesToMigrate.push({
+          def,
+          differences: cmp.differences,
+          currentSchema
         });
-
-        for (const row of rows) {
-          const data = {};
-          for (const field of commonFields) {
-            data[field] = row[field];
-          }
-          try {
-            await models[def.name].create(data, { transaction });
-          } catch (rowErr) {
-            console.log(`[MIGRATION] Failed to copy row: ${rowErr.message}`);
-          }
-        }
-        console.log(`[MIGRATION] Data copied back (${rows.length} rows, ${commonFields.length} fields).`);
+      } else {
+        await syncUniqueConstraints(sequelize, transaction, tableName, desiredSchema);
       }
+    }
 
-      // Drop temp table
-      await sequelize.query(`DROP TABLE "${tempTableName}"`, { transaction });
-      console.log(`[MIGRATION] Temp table dropped.`);
+    // 4. Execution Phase: Batch Migration
+    if (tablesToMigrate.length > 0) {
+      console.log(`[MIGRATION] Batch migration needed for ${tablesToMigrate.length} tables.`);
 
-      // Reset sequence for autoIncrement after restoring data
-      const pkField = Object.keys(desiredSchema).find(key => desiredSchema[key].primaryKey && desiredSchema[key].autoIncrement);
-      if (pkField) {
+      // A. Backup Data
+      for (const item of tablesToMigrate) {
+        const { def } = item;
+        const tempTableName = `${def.tableName}_temp_backup`;
+        console.log(`[MIGRATION] Backing up ${def.tableName} to ${tempTableName}`);
         await sequelize.query(
-          `SELECT setval(pg_get_serial_sequence('"${tableName}"', '${pkField}'), COALESCE(MAX("${pkField}"), 1)) FROM "${tableName}"`,
+          `CREATE TABLE "${tempTableName}" AS SELECT * FROM "${def.tableName}"`,
           { transaction }
         );
-        console.log(`[MIGRATION] Sequence for ${tableName}.${pkField} reset.`);
       }
 
-      console.log(`[MIGRATION] Migration of table ${tableName} completed successfully.`);
+      // B. Drop Old Tables (Cascade)
+      for (const item of tablesToMigrate) {
+        console.log(`[MIGRATION] Dropping table ${item.def.tableName}`);
+        await sequelize.query(`DROP TABLE "${item.def.tableName}" CASCADE`, { transaction });
+      }
+
+      // C. Recreate/Sync ALL Tables 
+      // Sync ALL models to ensure cascading drops are healed (FKs restored)
+      console.log(`[MIGRATION] Re-syncing all tables structure...`);
+      for (const def of allModelsDef) {
+        await models[def.name].sync({ transaction });
+        await syncUniqueConstraints(sequelize, transaction, def.tableName, def.fields);
+      }
+
+      // D. Restore Data
+      for (const item of tablesToMigrate) {
+        const { def, currentSchema } = item;
+        const tempTableName = `${def.tableName}_temp_backup`;
+        const desiredSchema = def.fields;
+
+        console.log(`[MIGRATION] Restoring data for ${def.tableName}...`);
+
+        const commonFields = Object.keys(desiredSchema).filter(field => currentSchema[field]);
+
+        if (commonFields.length > 0) {
+          const rows = await sequelize.query(`SELECT * FROM "${tempTableName}"`, {
+            transaction,
+            type: Sequelize.QueryTypes.SELECT
+          });
+
+          let successCount = 0;
+          for (const row of rows) {
+            const data = {};
+            for (const field of commonFields) {
+              data[field] = row[field];
+            }
+            try {
+              await models[def.name].create(data, { transaction });
+              successCount++;
+            } catch (rowErr) {
+              console.log(`[MIGRATION] Warning: Failed to restore row in ${def.tableName}: ${rowErr.message}`);
+            }
+          }
+          console.log(`[MIGRATION] Restored ${successCount}/${rows.length} rows to ${def.tableName}`);
+        }
+
+        // E. Drop Backup
+        await sequelize.query(`DROP TABLE "${tempTableName}"`, { transaction });
+
+        // F. Reset Sequences
+        const pkField = Object.keys(desiredSchema).find(key => desiredSchema[key].primaryKey && desiredSchema[key].autoIncrement);
+        if (pkField) {
+          await sequelize.query(
+            `SELECT setval(pg_get_serial_sequence('"${def.tableName}"', '${pkField}'), COALESCE(MAX("${pkField}"), 1)) FROM "${def.tableName}"`,
+            { transaction }
+          );
+        }
+      }
+
+      console.log(`[MIGRATION] Batch migration execution finished.`);
+
+    } else {
+      console.log('[MIGRATION] No schema changes requiring migration. Ensuring all tables exist...');
+      for (const def of allModelsDef) {
+        await models[def.name].sync({ transaction });
+      }
     }
 
     // Default values management
@@ -225,7 +282,7 @@ async function createAll() {
     for (const defValue of existingDefaults) {
       if (!currentLevelIds.has(defValue.defaultValueId)) {
         // Remove record from main table
-        const modelDef = modelsDef.find(m => m.tableName === defValue.tableName);
+        const modelDef = allModelsDef.find(m => m.tableName === defValue.tableName);
         if (modelDef && models[modelDef.name]) {
           await models[modelDef.name].destroy({
             where: { id: defValue.recordId },
@@ -240,7 +297,7 @@ async function createAll() {
 
     // Add or update default values
     for (const [entity, records] of Object.entries(defaultValues)) {
-      const modelDef = modelsDef.find(m => m.tableName === entity);
+      const modelDef = allModelsDef.find(m => m.tableName === entity);
       if (!modelDef) continue;
       const Model = models[modelDef.name];
       if (!Model) continue;

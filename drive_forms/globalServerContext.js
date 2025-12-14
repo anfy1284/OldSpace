@@ -6,6 +6,7 @@ const { Sequelize, DataTypes } = require('sequelize');
 const sequelize = require('../drive_root/db/sequelize_instance');
 async function loadApps(user) {
   const accessRole = await getUserAccessRole(user);
+  console.log(`[loadApps] Loading apps for user: ${user ? user.name : 'null'}, role: ${accessRole}`);
   const appsJsonPath = path.join(__dirname, 'apps.json');
   const appsConfig = JSON.parse(fs.readFileSync(appsJsonPath, 'utf8'));
   let allCode = '';
@@ -14,6 +15,7 @@ async function loadApps(user) {
     if (!fs.existsSync(configPath)) continue;
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     if (Array.isArray(config.access) && config.access.includes(accessRole)) {
+      console.log(`[loadApps] Loading app: ${app.name}`);
       // Only load apps marked with autoStart: true
       if (config.autoStart === true) {
         const clientPath = path.join(__dirname, '..', 'apps', app.name, 'resources', 'public', 'client.js');
@@ -21,6 +23,8 @@ async function loadApps(user) {
           allCode += fs.readFileSync(clientPath, 'utf8') + '\n\n';
         }
       }
+    } else {
+      // console.log(`[loadApps] Skipping app ${app.name} (access denied for role ${accessRole})`);
     }
   }
   return allCode;
@@ -45,8 +49,15 @@ async function getUserAccessRole(user) {
   if (!user) return 'nologged';
   // Find first user_systems record for user
   const userSystem = await UserSystem.findOne({ where: { userId: user.id }, order: [['id', 'ASC']] });
-  if (!userSystem || !userSystem.roleId) return null;
+  if (!userSystem || !userSystem.roleId) {
+    console.log(`[getUserAccessRole] No userSystem or roleId found for user ${user.id}`);
+    return null;
+  }
   const role = await AccessRole.findOne({ where: { id: userSystem.roleId } });
+  if (!role) {
+    console.log(`[getUserAccessRole] Role not found for roleId ${userSystem.roleId}`);
+    return null;
+  }
   return role ? role.name : null;
 }
 

@@ -179,11 +179,26 @@ const User = sequelize.define(userDef.name, Object.fromEntries(
     Object.entries(userDef.fields).map(([k, v]) => [k, { ...v, type: DataTypes[v.type] }])
 ), { ...userDef.options, tableName: userDef.tableName });
 async function getUserBySessionID(sessionID) {
-    if (!sessionID) return null;
+    if (!sessionID) {
+        console.log('[getUserBySessionID] No sessionID provided');
+        return null;
+    }
     const session = await Session.findOne({ where: { sessionId: sessionID } });
-    if (!session || !session.userId) return null;
+    if (!session) {
+        console.log(`[getUserBySessionID] Session not found for ID: ${sessionID}`);
+        return null;
+    }
+    if (!session.userId) {
+        console.log(`[getUserBySessionID] Session found but no userId. SessionID: ${sessionID}`);
+        return null;
+    }
     const user = await User.findOne({ where: { id: session.userId } });
-    return user ? user.get({ plain: true }) : null;
+    if (!user) {
+        console.log(`[getUserBySessionID] User not found for userId: ${session.userId}`);
+        return null; // return null if user not found
+    }
+    console.log(`[getUserBySessionID] Found user: ${user.name} (${user.id})`);
+    return user.get({ plain: true });
 }
 
 // Process default values
@@ -202,7 +217,7 @@ function processDefaultValues(data, level) {
         for (const record of records) {
             if (record.id !== undefined) {
                 if (allIds.has(record.id)) {
-                    console.error(`[defaultValues] ERROR: Duplicate id=${record.id} in table "${entity}" (id must be unique within level "${level}")`);
+                    console.log(`[defaultValues] INFO: Duplicate id=${record.id} in table "${entity}" (id must be unique within level "${level}") - skipping duplication check`);
                 }
                 allIds.add(record.id);
             } else {

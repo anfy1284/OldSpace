@@ -116,9 +116,349 @@ const models = [
             timestamps: true,
         },
     },
+    {
+        name: 'UserSettingsTypes',
+        tableName: 'user_settings_types',
+        fields: {
+            id: {
+                type: 'INTEGER',
+                primaryKey: true,
+                autoIncrement: true,
+            },
+            name: {
+                type: 'STRING',
+                allowNull: false,
+                unique: true,
+            },
+            valueTableName: {
+                type: 'STRING',
+                allowNull: false,
+            },
+        },
+        options: {
+            timestamps: true,
+        },
+    },
+    {
+        name: 'UserSettingsFields',
+        tableName: 'user_settings_fields',
+        fields: {
+            id: {
+                type: 'INTEGER',
+                primaryKey: true,
+                autoIncrement: true,
+            },
+            name: {
+                type: 'STRING',
+                allowNull: false,
+                unique: true,
+            },
+            displayName: {
+                type: 'STRING',
+                allowNull: false,
+            },
+            typeId: {
+                type: 'INTEGER',
+                allowNull: false,
+                references: {
+                    model: 'user_settings_types',
+                    key: 'id',
+                },
+            },
+            options: {
+                type: 'JSON',
+                allowNull: true,
+                defaultValue: null,
+            },
+        },
+        options: {
+            timestamps: true,
+        },
+    },
+    {
+        name: 'UserSettingsStringValues',
+        tableName: 'user_settings_string_values',
+        fields: {
+            id: {
+                type: 'INTEGER',
+                primaryKey: true,
+                autoIncrement: true,
+            },
+            userId: {
+                type: 'INTEGER',
+                allowNull: false,
+                references: {
+                    model: 'users',
+                    key: 'id',
+                },
+            },
+            settingsFieldId: {
+                type: 'INTEGER',
+                allowNull: false,
+                references: {
+                    model: 'user_settings_fields',
+                    key: 'id',
+                },
+            },
+            value: {
+                type: 'STRING',
+                allowNull: true,
+            },
+        },
+        options: {
+            timestamps: true,
+            indexes: [
+                {
+                    unique: true,
+                    fields: ['userId', 'settingsFieldId']
+                }
+            ]
+        },
+    },
+    {
+        name: 'UserSettingsNumberValues',
+        tableName: 'user_settings_number_values',
+        fields: {
+            id: {
+                type: 'INTEGER',
+                primaryKey: true,
+                autoIncrement: true,
+            },
+            userId: {
+                type: 'INTEGER',
+                allowNull: false,
+                references: {
+                    model: 'users',
+                    key: 'id',
+                },
+            },
+            settingsFieldId: {
+                type: 'INTEGER',
+                allowNull: false,
+                references: {
+                    model: 'user_settings_fields',
+                    key: 'id',
+                },
+            },
+            value: {
+                type: 'INTEGER',
+                allowNull: true,
+            },
+        },
+        options: {
+            timestamps: true,
+            indexes: [
+                {
+                    unique: true,
+                    fields: ['userId', 'settingsFieldId']
+                }
+            ]
+        },
+    },
+    {
+        name: 'UserSettingsBooleanValues',
+        tableName: 'user_settings_boolean_values',
+        fields: {
+            id: {
+                type: 'INTEGER',
+                primaryKey: true,
+                autoIncrement: true,
+            },
+            userId: {
+                type: 'INTEGER',
+                allowNull: false,
+                references: {
+                    model: 'users',
+                    key: 'id',
+                },
+            },
+            settingsFieldId: {
+                type: 'INTEGER',
+                allowNull: false,
+                references: {
+                    model: 'user_settings_fields',
+                    key: 'id',
+                },
+            },
+            value: {
+                type: 'BOOLEAN',
+                allowNull: true,
+            },
+        },
+        options: {
+            timestamps: true,
+            indexes: [
+                {
+                    unique: true,
+                    fields: ['userId', 'settingsFieldId']
+                }
+            ]
+        },
+    },
+    {
+        name: 'UserSettingsDateValues',
+        tableName: 'user_settings_date_values',
+        fields: {
+            id: {
+                type: 'INTEGER',
+                primaryKey: true,
+                autoIncrement: true,
+            },
+            userId: {
+                type: 'INTEGER',
+                allowNull: false,
+                references: {
+                    model: 'users',
+                    key: 'id',
+                },
+            },
+            settingsFieldId: {
+                type: 'INTEGER',
+                allowNull: false,
+                references: {
+                    model: 'user_settings_fields',
+                    key: 'id',
+                },
+            },
+            value: {
+                type: 'DATE',
+                allowNull: true,
+            },
+        },
+        options: {
+            timestamps: true,
+            indexes: [
+                {
+                    unique: true,
+                    fields: ['userId', 'settingsFieldId']
+                }
+            ]
+        },
+    }
+];
+
+const associations = [
+    // --- UserSettingsTypes <-> UserSettingsFields ---
+    {
+        source: 'UserSettingsTypes',
+        target: 'UserSettingsFields',
+        type: 'hasMany',
+        options: { foreignKey: 'typeId', as: 'fields' }
+    },
+    {
+        source: 'UserSettingsFields',
+        target: 'UserSettingsTypes',
+        type: 'belongsTo',
+        options: { foreignKey: 'typeId', as: 'type' }
+    },
+
+    // --- UserSettingsStringValues ---
+    {
+        source: 'Users',
+        target: 'UserSettingsStringValues',
+        type: 'hasMany',
+        options: { foreignKey: 'userId', as: 'settingsStringValues' }
+    },
+    {
+        source: 'UserSettingsStringValues',
+        target: 'Users',
+        type: 'belongsTo',
+        options: { foreignKey: 'userId', as: 'user' }
+    },
+    {
+        source: 'UserSettingsFields',
+        target: 'UserSettingsStringValues',
+        type: 'hasMany',
+        options: { foreignKey: 'settingsFieldId', as: 'stringValues' }
+    },
+    {
+        source: 'UserSettingsStringValues',
+        target: 'UserSettingsFields',
+        type: 'belongsTo',
+        options: { foreignKey: 'settingsFieldId', as: 'field' }
+    },
+
+    // --- UserSettingsNumberValues ---
+    {
+        source: 'Users',
+        target: 'UserSettingsNumberValues',
+        type: 'hasMany',
+        options: { foreignKey: 'userId', as: 'settingsNumberValues' }
+    },
+    {
+        source: 'UserSettingsNumberValues',
+        target: 'Users',
+        type: 'belongsTo',
+        options: { foreignKey: 'userId', as: 'user' }
+    },
+    {
+        source: 'UserSettingsFields',
+        target: 'UserSettingsNumberValues',
+        type: 'hasMany',
+        options: { foreignKey: 'settingsFieldId', as: 'numberValues' }
+    },
+    {
+        source: 'UserSettingsNumberValues',
+        target: 'UserSettingsFields',
+        type: 'belongsTo',
+        options: { foreignKey: 'settingsFieldId', as: 'field' }
+    },
+
+    // --- UserSettingsBooleanValues ---
+    {
+        source: 'Users',
+        target: 'UserSettingsBooleanValues',
+        type: 'hasMany',
+        options: { foreignKey: 'userId', as: 'settingsBooleanValues' }
+    },
+    {
+        source: 'UserSettingsBooleanValues',
+        target: 'Users',
+        type: 'belongsTo',
+        options: { foreignKey: 'userId', as: 'user' }
+    },
+    {
+        source: 'UserSettingsFields',
+        target: 'UserSettingsBooleanValues',
+        type: 'hasMany',
+        options: { foreignKey: 'settingsFieldId', as: 'booleanValues' }
+    },
+    {
+        source: 'UserSettingsBooleanValues',
+        target: 'UserSettingsFields',
+        type: 'belongsTo',
+        options: { foreignKey: 'settingsFieldId', as: 'field' }
+    },
+
+    // --- UserSettingsDateValues ---
+    {
+        source: 'Users',
+        target: 'UserSettingsDateValues',
+        type: 'hasMany',
+        options: { foreignKey: 'userId', as: 'settingsDateValues' }
+    },
+    {
+        source: 'UserSettingsDateValues',
+        target: 'Users',
+        type: 'belongsTo',
+        options: { foreignKey: 'userId', as: 'user' }
+    },
+    {
+        source: 'UserSettingsFields',
+        target: 'UserSettingsDateValues',
+        type: 'hasMany',
+        options: { foreignKey: 'settingsFieldId', as: 'dateValues' }
+    },
+    {
+        source: 'UserSettingsDateValues',
+        target: 'UserSettingsFields',
+        type: 'belongsTo',
+        options: { foreignKey: 'settingsFieldId', as: 'field' }
+    }
 ];
 
 const DEFAULT_VALUES_TABLE = 'default_values';
 
 module.exports = models;
+module.exports.associations = associations;
 module.exports.DEFAULT_VALUES_TABLE = DEFAULT_VALUES_TABLE;
