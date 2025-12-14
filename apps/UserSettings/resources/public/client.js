@@ -270,18 +270,24 @@
                 if (ctrl) {
                     let val = null;
                     if (ctrl instanceof Checkbox) {
-                        val = ctrl.checked; // Direct access or getChecked()? UI_classes says checked property
+                        val = ctrl.checked;
                     } else if (ctrl instanceof RadioGroup) {
                         val = ctrl.getValue();
                     } else if (ctrl instanceof ComboBox) {
-                        val = ctrl.getText(); // Or selected item
+                        val = ctrl.getText();
                     } else if (ctrl instanceof TextBox) {
                         val = ctrl.getText();
                     }
 
-                    // Convert types if needed based on original value type?
-                    // For now save as comes from UI
-                    dataToSave[f.name] = val;
+                    // Coerce based on field type to avoid sending invalid values (e.g. "NaN")
+                    if (f.typeId === 2) {
+                        const num = parseFloat(val);
+                        dataToSave[f.name] = isNaN(num) ? null : num;
+                    } else if (f.typeId === 3) {
+                        dataToSave[f.name] = !!val;
+                    } else {
+                        dataToSave[f.name] = val;
+                    }
                 }
             });
 

@@ -143,8 +143,9 @@ async function saveSettings(params, sessionID) {
             // Prepare value based on type
             let preparedValue = value;
             if (field.typeId === 2) {
-                // Number
+                // Number: parse and handle invalid numbers (avoid NaN stored in DB)
                 preparedValue = parseFloat(value);
+                if (isNaN(preparedValue)) preparedValue = null;
             } else if (field.typeId === 3) {
                 // Boolean
                 preparedValue = value === true || value === 'true';
