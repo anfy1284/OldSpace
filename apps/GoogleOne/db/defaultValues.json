@@ -1,0 +1,40 @@
+{
+    "user_settings_fields": [
+        {
+            "id": 101,
+            "name": "google_auth_connected",
+            "displayName": "Google Drive Connected",
+            "typeId": 3
+        },
+        {
+            "id": 102,
+            "name": "google_drive_folder_name",
+            "displayName": "Google Drive Folder Name",
+            "typeId": 1
+        },
+        {
+            "id": 103,
+            "name": "google_client_id",
+            "displayName": "Google Client ID",
+            "typeId": 1
+        },
+        {
+            "id": 104,
+            "name": "google_client_secret",
+            "displayName": "Google Client Secret",
+            "typeId": 1
+        },
+        {
+            "id": 105,
+            "name": "google_access_token",
+            "displayName": "Google Access Token",
+            "typeId": 1
+        },
+        {
+            "id": 106,
+            "name": "google_refresh_token",
+            "displayName": "Google Refresh Token",
+            "typeId": 1
+        }
+    ]
+}

@@ -1,0 +1,30 @@
+{
+    "level": "app",
+    "system": [
+        "mySpace"
+    ],
+    "access": [
+        "admin",
+        "public",
+        "user"
+    ],
+    "dependencies": {
+        "fileSystem": "1.0.0"
+    },
+    "mainMenuCommands": [
+        {
+            "id": "main",
+            "items": [
+                {
+                    "caption": "apps",
+                    "items": [
+                        {
+                            "caption": "Google One",
+                            "action": "open"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
