@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Consumer project for my-old-space framework.",
   "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
     "bcrypt": "^6.0.0",
     "dotenv": "^17.2.3",
