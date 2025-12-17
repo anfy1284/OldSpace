@@ -1,7 +1,0 @@
-{
-    "level": "app",
-    "autoStart": true,
-    "system": ["mySpace"],
-    "access": ["nologged"],
-    "dependencies": {}
-}

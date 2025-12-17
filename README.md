@@ -62,7 +62,11 @@
 
 ## База данных и миграции
 
-- ORM: Sequelize, настройки в `drive_root/db/dbSettings.json` (PostgreSQL).
+- ORM: Sequelize, настройки в `dbSettings.json`.
+  - **Приоритет загрузки настроек БД:**
+    1. `dbSettings.json` в **корне проекта** (если существует)
+    2. `drive_root/db/dbSettings.json` (дефолтные настройки фреймворка)
+  - Это позволяет каждому проекту иметь свою собственную базу данных.
 - Схема определяется декларативно через файлы `db/db.js` на каждом уровне (ядро, формы, приложений).
 - Миграции:
 	- Ядро: `drive_root/db/createDB.js`
@@ -149,7 +153,26 @@ apps/<myapp>/
 
 ## Запуск и разработка
 
-Требуется PostgreSQL (параметры в `drive_root/db/dbSettings.json`).
+Требуется PostgreSQL. Параметры подключения указываются в `dbSettings.json` в корне проекта.
+
+**Пример dbSettings.json:**
+```json
+{
+  "username": "postgres",
+  "password": "your_password",
+  "database": "your_database_name",
+  "host": "localhost",
+  "port": 5432,
+  "dialect": "postgres"
+}
+```
+
+**Механизм загрузки настроек БД:**
+1. Фреймворк сначала проверяет наличие `dbSettings.json` в корне проекта (путь передается через `start({ rootPath: __dirname })`)
+2. Если файл найден, используются настройки проекта
+3. Если файл не найден, используются дефолтные настройки из `packages/my-old-space/drive_root/db/dbSettings.json`
+
+Это позволяет каждому проекту использовать свою базу данных без изменения кода фреймворка.
 
 Команды (Windows PowerShell):
 
