@@ -14,15 +14,28 @@ const createDBPath = path.join(__dirname, 'drive_root', 'db', 'createDB.js');
 console.log('Initializing database...');
 console.log(`[main_server] PROJECT_ROOT from environment: ${process.env.PROJECT_ROOT || 'NOT SET'}`);
 
+// Ensure createDB exists before spawning
+if (!fs.existsSync(createDBPath)) {
+  console.error(`[main_server] createDB not found at ${createDBPath}`);
+  process.exit(1);
+}
+
 // Pass PROJECT_ROOT environment variable to child process
-const dbProcess = spawn(process.execPath, [createDBPath], { 
+const dbProcess = spawn(process.execPath, [createDBPath], {
   stdio: 'inherit',
   env: { ...process.env, PROJECT_ROOT: process.env.PROJECT_ROOT }
 });
 
-dbProcess.on('exit', (code) => {
-  if (code !== 0) {
-    console.error(`DB initialization error (exit code: ${code})`);
+console.log(`[main_server] Spawned createDB pid=${dbProcess.pid}`);
+
+dbProcess.on('error', (err) => {
+  console.error('[main_server] Failed to start DB init process:', err && err.message || err);
+  process.exit(1);
+});
+
+dbProcess.on('exit', (code, signal) => {
+  if (code !== 0 || signal) {
+    console.error(`DB initialization error (exit code: ${code}, signal: ${signal})`);
     process.exit(1);
   }
 
