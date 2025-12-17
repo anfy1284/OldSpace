@@ -45,13 +45,13 @@ const defaultValues = processDefaultValues(defaultValuesData, LEVEL);
  */
 function collectAllModels() {
   console.log('[COLLECT] Starting model collection from all levels...');
-  
+
   // Start with drive_root models
   let allModels = [...modelsDef];
   let defaultValuesByLevel = { [LEVEL]: defaultValues };
-  
+
   console.log(`[COLLECT] Added ${modelsDef.length} models from drive_root`);
-  
+
   // Collect from drive_forms (which will also collect from apps)
   const formsCreateDBPath = path.resolve(__dirname, '../../drive_forms/db/createDB.js');
   if (fs.existsSync(formsCreateDBPath)) {
@@ -59,13 +59,13 @@ function collectAllModels() {
       const formsModule = require(formsCreateDBPath);
       if (typeof formsModule.collectModels === 'function') {
         const formsData = formsModule.collectModels();
-        
+
         // Add models from drive_forms and apps
         if (Array.isArray(formsData.models)) {
           allModels = allModels.concat(formsData.models);
           console.log(`[COLLECT] Added ${formsData.models.length} models from drive_forms and apps`);
         }
-        
+
         // Merge defaultValues by level
         if (formsData.defaultValuesByLevel) {
           defaultValuesByLevel = { ...defaultValuesByLevel, ...formsData.defaultValuesByLevel };
@@ -79,10 +79,10 @@ function collectAllModels() {
   } else {
     console.warn('[COLLECT] drive_forms/db/createDB.js not found');
   }
-  
+
   console.log(`[COLLECT] Total models collected: ${allModels.length}`);
   console.log(`[COLLECT] Levels with defaultValues: ${Object.keys(defaultValuesByLevel).join(', ')}`);
-  
+
   return { models: allModels, defaultValuesByLevel };
 }
 
@@ -169,10 +169,10 @@ function mergeModelDefinitions(allDefs) {
 async function createAll() {
   await ensureDatabase();
   const sequelize = getSequelizeInstance();
-  
+
   // 1. Collect all models from all levels (drive_root -> drive_forms -> apps)
   const { models: allModelsDef, defaultValuesByLevel } = collectAllModels();
-  
+
   // 2. Merge model definitions (handle models declared on multiple levels)
   const mergedModelsDef = mergeModelDefinitions(allModelsDef);
   console.log(`[MIGRATION] Total models after merge: ${mergedModelsDef.length}`);
@@ -255,7 +255,7 @@ async function createAll() {
 
       // D. Restore Data from backups FIRST
       console.log('[MIGRATION] Restoring all data from backups...');
-      
+
       for (const item of tablesToMigrate) {
         const { def, currentSchema } = item;
         const tempTableName = `${def.tableName}_temp_backup`;
@@ -266,38 +266,87 @@ async function createAll() {
         const commonFields = Object.keys(desiredSchema).filter(field => currentSchema[field]);
 
         if (commonFields.length > 0) {
-          const rows = await sequelize.query(`SELECT * FROM "${tempTableName}"`, {
+          const totalRowsRes = await sequelize.query(`SELECT COUNT(*) as count FROM "${tempTableName}"`, {
             transaction,
             type: Sequelize.QueryTypes.SELECT
           });
+          const totalRows = parseInt(totalRowsRes[0].count);
+          console.log(`[MIGRATION] Total rows to restore for ${def.tableName}: ${totalRows}`);
 
+          const CHUNK_SIZE = 1000;
           let successCount = 0;
           let failCount = 0;
-          for (const row of rows) {
-            const data = {};
-            for (const field of commonFields) {
-              data[field] = row[field];
-            }
-            
-            // Use savepoint to isolate FK errors
+          let offset = 0;
+
+          // Определяем поле для сортировки (лучше всего PK)
+          const sortField = Object.keys(desiredSchema).find(key => desiredSchema[key].primaryKey) || commonFields[0];
+
+          while (offset < totalRows) {
+            const rows = await sequelize.query(
+              `SELECT * FROM "${tempTableName}" ORDER BY "${sortField}" LIMIT ${CHUNK_SIZE} OFFSET ${offset}`,
+              { transaction, type: Sequelize.QueryTypes.SELECT }
+            );
+
+            if (rows.length === 0) break;
+
             try {
-              await sequelize.query('SAVEPOINT restore_row', { transaction });
-              await models[def.name].create(data, { transaction });
-              await sequelize.query('RELEASE SAVEPOINT restore_row', { transaction });
-              successCount++;
-            } catch (rowErr) {
-              await sequelize.query('ROLLBACK TO SAVEPOINT restore_row', { transaction });
-              failCount++;
-              // Silently skip FK errors - they'll be fixed by defaultValues
-              if (!rowErr.message.includes('внешнего ключа') && !rowErr.message.includes('foreign key')) {
-                console.log(`[MIGRATION] Warning: Failed to restore row in ${def.tableName}: ${rowErr.message}`);
+              // 1. Пытаемся вставить пачкой (быстро)
+              await sequelize.query(`SAVEPOINT chunk_${offset}`, { transaction });
+              const dataToInsert = rows.map(row => {
+                const data = {};
+                for (const field of commonFields) {
+                  data[field] = row[field];
+                }
+                return data;
+              });
+
+              // ignoreDuplicates помогает с уникальными ключами, но не с FK
+              await models[def.name].bulkCreate(dataToInsert, {
+                transaction,
+                ignoreDuplicates: true,
+                validate: false,
+                hooks: false
+              });
+
+              await sequelize.query(`RELEASE SAVEPOINT chunk_${offset}`, { transaction });
+              successCount += rows.length;
+            } catch (chunkErr) {
+              // 2. Если пачка не прошла (например, из-за FK), откатываемся и вставляем по одной
+              await sequelize.query(`ROLLBACK TO SAVEPOINT chunk_${offset}`, { transaction });
+
+              for (const row of rows) {
+                const data = {};
+                for (const field of commonFields) {
+                  data[field] = row[field];
+                }
+
+                try {
+                  await sequelize.query('SAVEPOINT restore_row', { transaction });
+                  await models[def.name].create(data, { transaction, hooks: false });
+                  await sequelize.query('RELEASE SAVEPOINT restore_row', { transaction });
+                  successCount++;
+                } catch (rowErr) {
+                  await sequelize.query('ROLLBACK TO SAVEPOINT restore_row', { transaction });
+                  failCount++;
+                  // Пропускаем ошибки FK - они поправятся дефолтными значениями позже
+                  if (!rowErr.message.includes('внешнего ключа') && !rowErr.message.includes('foreign key')) {
+                    console.log(`[MIGRATION] Warning: Failed to restore row in ${def.tableName}: ${rowErr.message}`);
+                  }
+                }
               }
             }
+
+            offset += rows.length;
+            if (totalRows > CHUNK_SIZE) {
+              const progress = Math.round((offset / totalRows) * 100);
+              console.log(`[MIGRATION] Progress for ${def.tableName}: ${progress}% (${offset}/${totalRows})`);
+            }
           }
+
           if (failCount > 0) {
-            console.log(`[MIGRATION] Restored ${successCount}/${rows.length} rows to ${def.tableName} (${failCount} failed - will be fixed by defaultValues)`);
+            console.log(`[MIGRATION] Restored ${successCount}/${totalRows} rows to ${def.tableName} (${failCount} failed - will be fixed by defaultValues)`);
           } else {
-            console.log(`[MIGRATION] Restored ${successCount}/${rows.length} rows to ${def.tableName}`);
+            console.log(`[MIGRATION] Restored ${successCount}/${totalRows} rows to ${def.tableName}`);
           }
         }
 
@@ -321,14 +370,14 @@ async function createAll() {
       for (const def of mergedModelsDef) {
         await models[def.name].sync({ transaction });
       }
-      
+
       // Fill defaultValues for new installation
       console.log('[MIGRATION] Filling defaultValues for new installation...');
       const DefaultValuesModel = models.DefaultValues;
-      
+
       for (const [lvlName, lvlValues] of Object.entries(defaultValuesByLevel)) {
         console.log(`[MIGRATION] Filling defaultValues for level: ${lvlName}`);
-        
+
         for (const [entity, records] of Object.entries(lvlValues)) {
           const modelDef = mergedModelsDef.find(m => m.tableName === entity);
           if (!modelDef) continue;
@@ -377,7 +426,7 @@ async function createAll() {
 
     for (const [lvlName, lvlValues] of Object.entries(defaultValuesByLevel)) {
       console.log(`[MIGRATION] Updating defaultValues for level: ${lvlName}`);
-      
+
       // Collect all defaultValueId for current level
       const currentLevelIds = new Set();
       for (const [entity, records] of Object.entries(lvlValues)) {
@@ -453,10 +502,10 @@ async function createAll() {
             // Record exists - update ONLY fields from defaultValues config
             const updateData = { ...data };
             delete updateData.id; // Don't update ID
-            
+
             await existingRecord.update(updateData, { transaction });
             console.log(`[MIGRATION] Updated predefined fields in: ${entity}[${existingRecord.id}] (defaultValueId=${defaultValueId}, level=${lvlName})`);
-            
+
             // Register in DefaultValues table
             const defEntry = await DefaultValuesModel.findOne({
               where: { level: lvlName, defaultValueId, tableName: entity },
@@ -474,7 +523,7 @@ async function createAll() {
             // Record doesn't exist - create new
             const newRecord = await Model.create(data, { transaction });
             console.log(`[MIGRATION] Created new predefined record: ${entity}[${newRecord.id}] (defaultValueId=${defaultValueId}, level=${lvlName})`);
-            
+
             // Register in DefaultValues table (check if not already registered)
             const defEntry = await DefaultValuesModel.findOne({
               where: { level: lvlName, defaultValueId, tableName: entity },
