@@ -4,27 +4,43 @@ const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');
 
-// Load dbSettings.json: first try project root, then fallback to framework default
-// Try to get project root from environment variable (set by framework in separate process)
+// 0. Environment and paths
 const projectRoot = process.env.PROJECT_ROOT;
 console.log(`[createDB] Received PROJECT_ROOT from environment: ${projectRoot || 'NOT SET'}`);
-let dbSettingsPath = path.join(__dirname, 'dbSettings.json'); // default framework path
-let dbSettings;
+
+// 1. Load basic settings (dialect selector)
+let baseDbSettings = { dialect: 'sqlite' }; // Default to sqlite
 
 if (projectRoot) {
-  const projectDbSettingsPath = path.join(projectRoot, 'dbSettings.json');
-  console.log(`[createDB] Checking for dbSettings at: ${projectDbSettingsPath}`);
-  if (fs.existsSync(projectDbSettingsPath)) {
-    console.log(`[createDB] Using dbSettings from project root: ${projectDbSettingsPath}`);
-    dbSettings = require(projectDbSettingsPath);
-    dbSettingsPath = projectDbSettingsPath;
-  } else {
-    console.log(`[createDB] Project dbSettings.json not found at ${projectDbSettingsPath}, using framework default: ${dbSettingsPath}`);
-    dbSettings = require('./dbSettings.json');
+  const projectBaseDbSettingsPath = path.join(projectRoot, 'dbSettings.json');
+  if (fs.existsSync(projectBaseDbSettingsPath)) {
+    try {
+      baseDbSettings = JSON.parse(fs.readFileSync(projectBaseDbSettingsPath, 'utf8'));
+    } catch (e) {
+      console.warn(`[createDB] Error parsing project dbSettings.json: ${e.message}. Using default.`);
+    }
   }
-} else {
-  console.log(`[createDB] PROJECT_ROOT not set, using framework default: ${dbSettingsPath}`);
-  dbSettings = require('./dbSettings.json');
+}
+
+// 2. Load dialect-specific settings
+const dialect = baseDbSettings.dialect || 'sqlite';
+const configFileName = `dbSettings.${dialect}.json`;
+let dbSettings = dialect === 'sqlite'
+  ? { dialect: 'sqlite', storage: path.join(projectRoot || __dirname, 'database.sqlite') }
+  : {};
+
+if (projectRoot) {
+  const projectConfigPath = path.join(projectRoot, configFileName);
+  if (fs.existsSync(projectConfigPath)) {
+    console.log(`[createDB] Using ${dialect} settings from project root: ${projectConfigPath}`);
+    try {
+      dbSettings = JSON.parse(fs.readFileSync(projectConfigPath, 'utf8'));
+    } catch (e) {
+      console.error(`[createDB] Error parsing ${configFileName}: ${e.message}`);
+    }
+  } else {
+    console.log(`[createDB] Project ${configFileName} not found. Using defaults for ${dialect}.`);
+  }
 }
 
 const dbConfig = require('./db.json');
@@ -94,6 +110,16 @@ async function ensureDatabase() {
     return;
   }
 
+  if (dbSettings.dialect === 'sqlite') {
+    const dbPath = dbSettings.storage || path.join(projectRoot || __dirname, 'database.sqlite');
+    const dbDir = path.dirname(dbPath);
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
+    }
+    console.log(`[createDB] SQLite database file: ${dbPath}`);
+    return;
+  }
+
   const adminClient = new Client({
     user: dbSettings.username,
     password: dbSettings.password,
@@ -127,6 +153,16 @@ function getSequelizeInstance() {
       }
     });
   }
+
+  if (dbSettings.dialect === 'sqlite') {
+    const dbPath = dbSettings.storage || path.join(projectRoot || __dirname, 'database.sqlite');
+    return new Sequelize({
+      dialect: 'sqlite',
+      storage: dbPath,
+      logging: false,
+    });
+  }
+
   return new Sequelize(dbSettings.database, dbSettings.username, dbSettings.password, {
     host: dbSettings.host,
     port: dbSettings.port,
@@ -210,7 +246,7 @@ async function createAll() {
       const currentSchema = tableExists;
       const desiredSchema = def.fields;
 
-      const cmp = await compareSchemas(currentSchema, desiredSchema);
+      const cmp = await compareSchemas(currentSchema, desiredSchema, sequelize.getDialect());
 
       if (cmp.needsMigration) {
         console.log(`[MIGRATION] Table ${tableName} needs migration. Diffs:`, cmp.differences);
@@ -356,10 +392,21 @@ async function createAll() {
         // F. Reset Sequences
         const pkField = Object.keys(desiredSchema).find(key => desiredSchema[key].primaryKey && desiredSchema[key].autoIncrement);
         if (pkField) {
-          await sequelize.query(
-            `SELECT setval(pg_get_serial_sequence('"${def.tableName}"', '${pkField}'), COALESCE(MAX("${pkField}"), 1)) FROM "${def.tableName}"`,
-            { transaction }
-          );
+          if (sequelize.getDialect() === 'postgres') {
+            await sequelize.query(
+              `SELECT setval(pg_get_serial_sequence('"${def.tableName}"', '${pkField}'), COALESCE(MAX("${pkField}"), 1)) FROM "${def.tableName}"`,
+              { transaction }
+            );
+          } else if (sequelize.getDialect() === 'sqlite') {
+            await sequelize.query(
+              `DELETE FROM sqlite_sequence WHERE name='${def.tableName}'`,
+              { transaction }
+            );
+            await sequelize.query(
+              `INSERT INTO sqlite_sequence (name, seq) SELECT '${def.tableName}', COALESCE(MAX("${pkField}"), 0) FROM "${def.tableName}"`,
+              { transaction }
+            );
+          }
         }
       }
 
@@ -558,10 +605,18 @@ async function createAll() {
       if (!pkField) continue;
       const tableName = def.tableName;
       try {
-        await sequelize.query(
-          `SELECT setval(pg_get_serial_sequence('"${tableName}"', '${pkField}'), COALESCE(MAX("${pkField}"), 1)) FROM "${tableName}"`,
-          { transaction }
-        );
+        if (sequelize.getDialect() === 'postgres') {
+          await sequelize.query(
+            `SELECT setval(pg_get_serial_sequence('"${tableName}"', '${pkField}'), COALESCE(MAX("${pkField}"), 1)) FROM "${tableName}"`,
+            { transaction }
+          );
+        } else if (sequelize.getDialect() === 'sqlite') {
+          await sequelize.query(`DELETE FROM sqlite_sequence WHERE name='${tableName}'`, { transaction });
+          await sequelize.query(
+            `INSERT INTO sqlite_sequence (name, seq) SELECT '${tableName}', COALESCE(MAX("${pkField}"), 0) FROM "${tableName}"`,
+            { transaction }
+          );
+        }
       } catch (e) {
         console.error(`[MIGRATION] Error resetting sequence for ${tableName}.${pkField}:`, e.message);
       }

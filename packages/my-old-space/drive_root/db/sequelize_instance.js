@@ -8,27 +8,37 @@ const path = require('path');
 // 1. Если production и есть DATABASE_URL — используем только её
 // 2. Если DB_SETTINGS_PATH задана — используем её
 // 3. Иначе ищем dbSettings.json сначала в корне процесса, потом в пакете
-let settings;
-const tryPaths = [];
-if (process.env.DB_SETTINGS_PATH) {
-  tryPaths.push(path.resolve(process.env.DB_SETTINGS_PATH));
-} else {
-  // process.cwd() — корень приложения
-  tryPaths.push(path.join(process.cwd(), 'dbSettings.json'));
-  tryPaths.push(path.join(__dirname, 'dbSettings.json'));
-}
-let lastErr;
-for (const settingsPath of tryPaths) {
+const projectRoot = process.cwd();
+let baseSettings = { dialect: 'sqlite' };
+const baseSettingsPath = path.join(projectRoot, 'dbSettings.json');
+
+if (fs.existsSync(baseSettingsPath)) {
   try {
-    settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-    break;
+    baseSettings = JSON.parse(fs.readFileSync(baseSettingsPath, 'utf8'));
   } catch (e) {
-    lastErr = e;
+    console.error('Ошибка парсинга dbSettings.json:', e.message);
   }
 }
-if (!settings) {
-  console.error('Ошибка чтения dbSettings.json по путям:', tryPaths, lastErr?.message);
-  throw lastErr;
+
+// 2. Load dialect-specific settings
+const dialect = baseSettings.dialect || 'sqlite';
+const configFileName = `dbSettings.${dialect}.json`;
+const configPath = path.join(projectRoot, configFileName);
+
+let settings = dialect === 'sqlite'
+  ? { dialect: 'sqlite', storage: path.join(projectRoot, 'database.sqlite') }
+  : {};
+
+if (fs.existsSync(configPath)) {
+  try {
+    settings = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  } catch (e) {
+    console.error(`Ошибка чтения ${configFileName}:`, e.message);
+    if (dialect === 'postgres') throw e; // Postgres requires config
+  }
+} else if (dialect === 'postgres') {
+  console.error(`Критическая ошибка: ${configFileName} не найден для PostgreSQL`);
+  throw new Error(`Configuration file ${configFileName} missing`);
 }
 
 let sequelize;
@@ -41,9 +51,15 @@ if (isProduction && process.env.DATABASE_URL) {
     dialectOptions: {
       ssl: {
         require: true,
-        rejectUnauthorized: false // Для Supabase часто нужно
+        rejectUnauthorized: false
       }
     }
+  });
+} else if (settings.dialect === 'sqlite') {
+  sequelize = new Sequelize({
+    dialect: 'sqlite',
+    storage: settings.storage || path.join(process.cwd(), 'database.sqlite'),
+    logging: false,
   });
 } else {
   sequelize = new Sequelize(settings.database, settings.username, settings.password, {
