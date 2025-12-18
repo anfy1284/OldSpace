@@ -404,6 +404,7 @@ async function createAll() {
             }
 
             try {
+              await sequelize.query('SAVEPOINT fill_default', { transaction });
               const newRecord = await Model.create(data, { transaction });
               await DefaultValuesModel.create({
                 level: lvlName,
@@ -411,8 +412,10 @@ async function createAll() {
                 tableName: entity,
                 recordId: newRecord.id
               }, { transaction });
+              await sequelize.query('RELEASE SAVEPOINT fill_default', { transaction });
               console.log(`[MIGRATION] Added: ${entity}[${newRecord.id}] (defaultValueId=${defaultValueId}, level=${lvlName})`);
             } catch (err) {
+              await sequelize.query('ROLLBACK TO SAVEPOINT fill_default', { transaction });
               // May already exist, skip
             }
           }
@@ -498,45 +501,52 @@ async function createAll() {
             });
           }
 
-          if (existingRecord) {
-            // Record exists - update ONLY fields from defaultValues config
-            const updateData = { ...data };
-            delete updateData.id; // Don't update ID
+          try {
+            await sequelize.query('SAVEPOINT update_default', { transaction });
+            if (existingRecord) {
+              // Record exists - update ONLY fields from defaultValues config
+              const updateData = { ...data };
+              delete updateData.id; // Don't update ID
 
-            await existingRecord.update(updateData, { transaction });
-            console.log(`[MIGRATION] Updated predefined fields in: ${entity}[${existingRecord.id}] (defaultValueId=${defaultValueId}, level=${lvlName})`);
+              await existingRecord.update(updateData, { transaction });
+              console.log(`[MIGRATION] Updated predefined fields in: ${entity}[${existingRecord.id}] (defaultValueId=${defaultValueId}, level=${lvlName})`);
 
-            // Register in DefaultValues table
-            const defEntry = await DefaultValuesModel.findOne({
-              where: { level: lvlName, defaultValueId, tableName: entity },
-              transaction
-            });
-            if (!defEntry) {
-              await DefaultValuesModel.create({
-                level: lvlName,
-                defaultValueId: defaultValueId,
-                tableName: entity,
-                recordId: existingRecord.id
-              }, { transaction });
+              // Register in DefaultValues table
+              const defEntry = await DefaultValuesModel.findOne({
+                where: { level: lvlName, defaultValueId, tableName: entity },
+                transaction
+              });
+              if (!defEntry) {
+                await DefaultValuesModel.create({
+                  level: lvlName,
+                  defaultValueId: defaultValueId,
+                  tableName: entity,
+                  recordId: existingRecord.id
+                }, { transaction });
+              }
+            } else {
+              // Record doesn't exist - create new
+              const newRecord = await Model.create(data, { transaction });
+              console.log(`[MIGRATION] Created new predefined record: ${entity}[${newRecord.id}] (defaultValueId=${defaultValueId}, level=${lvlName})`);
+
+              // Register in DefaultValues table (check if not already registered)
+              const defEntry = await DefaultValuesModel.findOne({
+                where: { level: lvlName, defaultValueId, tableName: entity },
+                transaction
+              });
+              if (!defEntry) {
+                await DefaultValuesModel.create({
+                  level: lvlName,
+                  defaultValueId: defaultValueId,
+                  tableName: entity,
+                  recordId: newRecord.id
+                }, { transaction });
+              }
             }
-          } else {
-            // Record doesn't exist - create new
-            const newRecord = await Model.create(data, { transaction });
-            console.log(`[MIGRATION] Created new predefined record: ${entity}[${newRecord.id}] (defaultValueId=${defaultValueId}, level=${lvlName})`);
-
-            // Register in DefaultValues table (check if not already registered)
-            const defEntry = await DefaultValuesModel.findOne({
-              where: { level: lvlName, defaultValueId, tableName: entity },
-              transaction
-            });
-            if (!defEntry) {
-              await DefaultValuesModel.create({
-                level: lvlName,
-                defaultValueId: defaultValueId,
-                tableName: entity,
-                recordId: newRecord.id
-              }, { transaction });
-            }
+            await sequelize.query('RELEASE SAVEPOINT update_default', { transaction });
+          } catch (err) {
+            await sequelize.query('ROLLBACK TO SAVEPOINT update_default', { transaction });
+            console.error(`[MIGRATION] Error processing default value for ${entity} (defaultValueId=${defaultValueId}):`, err.message);
           }
         }
       }
