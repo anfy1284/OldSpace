@@ -22,19 +22,47 @@ function collectModels() {
   const defaultValuesByLevel = { [LEVEL]: defaultValues };
 
   // Get list of apps
-  const appsJsonPath = path.resolve(__dirname, '../apps.json');
+  const localAppsJsonPath = path.resolve(__dirname, '../apps.json');
+  const rootAppsJsonPath = path.resolve(__dirname, '../../apps.json');
+
   let appsList = [];
   try {
-    const appsJson = JSON.parse(fs.readFileSync(appsJsonPath, 'utf8'));
-    appsList = appsJson.apps || [];
+    const configs = [];
+    if (fs.existsSync(localAppsJsonPath)) {
+      configs.push(JSON.parse(fs.readFileSync(localAppsJsonPath, 'utf8')));
+    }
+    if (fs.existsSync(rootAppsJsonPath)) {
+      configs.push(JSON.parse(fs.readFileSync(rootAppsJsonPath, 'utf8')));
+    }
+
+    if (configs.length > 0) {
+      const mergedApps = (configs[0].apps || []);
+      if (configs.length > 1) {
+        const rootApps = configs[1].apps || [];
+        rootApps.forEach(app => {
+          if (!mergedApps.find(a => a.name === app.name)) {
+            mergedApps.push(app);
+          }
+        });
+      }
+      appsList = mergedApps;
+    }
   } catch (e) {
-    console.error('[COLLECT] Error reading apps.json:', e.message);
+    console.error('[COLLECT] Error reading or merging apps.json:', e.message);
   }
 
   // Collect models and defaultValues from each app
+  let appsBasePath = "apps"; // Default if not specified
+  try {
+    if (fs.existsSync(localAppsJsonPath)) {
+      const cfg = JSON.parse(fs.readFileSync(localAppsJsonPath, 'utf8'));
+      if (cfg.path) appsBasePath = cfg.path.replace(/^[/\\]+/, '');
+    }
+  } catch (e) { }
+
   for (const app of appsList) {
     // Load models from app's db/db.json
-    const dbPath = path.resolve(__dirname, `../../apps${app.path}/db/db.json`);
+    const dbPath = path.resolve(__dirname, `../../${appsBasePath}${app.path}/db/db.json`);
     if (fs.existsSync(dbPath)) {
       try {
         const appExport = require(dbPath);
@@ -49,7 +77,7 @@ function collectModels() {
     }
 
     // Load defaultValues from app's db/defaultValues.json
-    const appDefPath = path.resolve(__dirname, `../../apps${app.path}/db/defaultValues.json`);
+    const appDefPath = path.resolve(__dirname, `../../${appsBasePath}${app.path}/db/defaultValues.json`);
     if (fs.existsSync(appDefPath)) {
       try {
         const raw = JSON.parse(fs.readFileSync(appDefPath, 'utf8'));
@@ -66,7 +94,7 @@ function collectModels() {
   const accessSet = new Set();
 
   for (const app of appsList) {
-    const configPath = path.resolve(__dirname, `../../apps${app.path}/config.json`);
+    const configPath = path.resolve(__dirname, `../../${appsBasePath}${app.path}/config.json`);
     try {
       const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
       if (Array.isArray(config.system)) {
@@ -91,13 +119,13 @@ function collectModels() {
         });
       }
     }
-    
+
     let nextId = maxId + 1;
     const formsDynamic = {
       systems: Array.from(systemSet).map(name => ({ id: nextId++, name, _level: LEVEL })),
       access_roles: Array.from(accessSet).map(name => ({ id: nextId++, name, _level: LEVEL }))
     };
-    
+
     // Merge dynamic data with existing defaultValues for drive_forms level
     for (const [entity, records] of Object.entries(formsDynamic)) {
       if (Array.isArray(records) && records.length > 0) {

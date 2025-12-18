@@ -41,17 +41,34 @@ try {
     appHandler = require(path.join(appDir, config.appHandler));
 
     // 3. Initialize all applications from apps.json (if present)
-    const appsJsonPath = path.join(appDir, 'apps.json');
-    if (fs.existsSync(appsJsonPath)) {
-        const appsConfig = JSON.parse(fs.readFileSync(appsJsonPath, 'utf8'));
-        const appsBaseDir = path.join(__dirname, '..', 'apps');
-        if (Array.isArray(appsConfig.apps)) {
-            for (const app of appsConfig.apps) {
-                if (app.name) {
-                    runInitIfExists(path.join(appsBaseDir, app.name));
+    const localAppsJsonPath = path.join(appDir, 'apps.json');
+    const rootAppsJsonPath = path.join(__dirname, '..', 'apps.json');
+
+    let appsBaseDir = path.join(__dirname, '..', 'apps');
+    let allApps = [];
+
+    const loadAppsFromPath = (p) => {
+        if (fs.existsSync(p)) {
+            try {
+                const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
+                if (Array.isArray(cfg.apps)) {
+                    cfg.apps.forEach(app => {
+                        if (app.name && !allApps.find(a => a.name === app.name)) {
+                            allApps.push(app);
+                        }
+                    });
                 }
+            } catch (err) {
+                console.error(`[drive_root] Error reading apps.json at ${p}:`, err.message);
             }
         }
+    };
+
+    loadAppsFromPath(localAppsJsonPath);
+    loadAppsFromPath(rootAppsJsonPath);
+
+    for (const app of allApps) {
+        runInitIfExists(path.join(appsBaseDir, app.name));
     }
 } catch (e) {
     console.error('ERROR loading configuration or application handler:', e.message);
@@ -189,7 +206,23 @@ async function handleRequest(req, res) {
             const relPath = parts.slice(4).join(path.sep);
 
             // Path to apps folder relative to drive_root
-            const appsDir = path.join(__dirname, '..', 'apps');
+            let appsBasePath = "apps"; // Default
+            try {
+                // Try to find path in apps.json files
+                const localAppsJsonPath = path.join(appDir, 'apps.json');
+                const rootAppsJsonPath = path.join(__dirname, '..', 'apps.json');
+                const checkPath = (p) => {
+                    if (fs.existsSync(p)) {
+                        try {
+                            const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
+                            if (cfg.path) appsBasePath = cfg.path.replace(/^[/\\]+/, '');
+                        } catch (e) { }
+                    }
+                };
+                checkPath(localAppsJsonPath);
+                checkPath(rootAppsJsonPath);
+            } catch (e) { }
+            const appsDir = path.join(__dirname, '..', appsBasePath);
 
             if (resType === 'public') {
                 const filePath = path.join(appsDir, appName, 'resources', 'public', relPath);

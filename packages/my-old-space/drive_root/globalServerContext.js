@@ -70,36 +70,57 @@ function collectAllModelDefs() {
         defs.push(...(Array.isArray(appModels) ? appModels : []));
         associations.push(...appAssoc);
     }
-    // 3. App models from drive_forms/apps.json
+    // 3. App models from apps.json
     try {
-        const appsJsonPath = path.join(appDir, 'apps.json');
-        if (fs.existsSync(appsJsonPath)) {
-            const appsConfig = JSON.parse(fs.readFileSync(appsJsonPath, 'utf8'));
-            // Database for apps is taken from apps.json config: { path: "/apps" }
-            if (typeof appsConfig.path === 'string' && appsConfig.path.length > 0) {
-                const appsPathCfg = appsConfig.path.replace(/^[/\\]+/, '');
-                const appsBaseDir = path.join(__dirname, '..', appsPathCfg);
-                if (Array.isArray(appsConfig.apps)) {
-                    for (const app of appsConfig.apps) {
-                        const appDirPath = path.join(appsBaseDir, app.name);
-                        const appDbDefPath = path.join(appDirPath, 'db', 'db.json');
-                        if (fs.existsSync(appDbDefPath)) {
-                            try {
-                                const appExport = require(appDbDefPath);
-                                const appModels = appExport.models || appExport;
-                                const appAssoc = appExport.associations || [];
-                                defs.push(...(Array.isArray(appModels) ? appModels : []));
-                                associations.push(...appAssoc);
-                            } catch (e) {
-                                console.error(`[globalModels] Error loading models for app ${app.name}:`, e.message);
-                            }
-                        }
+        const localAppsJsonPath = path.join(appDir, 'apps.json');
+        const rootAppsJsonPath = path.join(__dirname, '..', 'apps.json');
+
+        let allApps = [];
+        let appsBasePath = "apps"; // Default if not specified
+
+        const loadAppsFromPath = (p) => {
+            if (fs.existsSync(p)) {
+                try {
+                    const appsConfig = JSON.parse(fs.readFileSync(p, 'utf8'));
+                    if (typeof appsConfig.path === 'string' && appsConfig.path.length > 0) {
+                        appsBasePath = appsConfig.path;
                     }
+                    if (Array.isArray(appsConfig.apps)) {
+                        appsConfig.apps.forEach(app => {
+                            if (app.name && !allApps.find(a => a.name === app.name)) {
+                                allApps.push(app);
+                            }
+                        });
+                    }
+                } catch (e) {
+                    console.error(`[globalModels] Error reading apps.json at ${p}:`, e.message);
+                }
+            }
+        };
+
+        loadAppsFromPath(localAppsJsonPath);
+        loadAppsFromPath(rootAppsJsonPath);
+
+        const appsPathCfg = appsBasePath.replace(/^[/\\]+/, '');
+        const appsBaseDir = path.join(__dirname, '..', appsPathCfg);
+
+        for (const app of allApps) {
+            const appDirPath = path.join(appsBaseDir, app.name);
+            const appDbDefPath = path.join(appDirPath, 'db', 'db.json');
+            if (fs.existsSync(appDbDefPath)) {
+                try {
+                    const appExport = require(appDbDefPath);
+                    const appModels = appExport.models || appExport;
+                    const appAssoc = appExport.associations || [];
+                    defs.push(...(Array.isArray(appModels) ? appModels : []));
+                    associations.push(...appAssoc);
+                } catch (e) {
+                    console.error(`[globalModels] Error loading models for app ${app.name}:`, e.message);
                 }
             }
         }
     } catch (e) {
-        console.error('[globalModels] Error reading apps.json:', e.message);
+        console.error('[globalModels] Unexpected error processing apps.json:', e.message);
     }
     return { models: defs, associations };
 }
@@ -417,11 +438,11 @@ module.exports.createNewUser = createNewUser;
 module.exports.createGuestUser = createGuestUser;
 
 // Project root path management
-module.exports.setProjectRoot = function(rootPath) {
+module.exports.setProjectRoot = function (rootPath) {
     projectRoot = rootPath;
     console.log(`[globalContext] Project root set to: ${rootPath}`);
 };
 
-module.exports.getProjectRoot = function() {
+module.exports.getProjectRoot = function () {
     return projectRoot;
 };

@@ -16,10 +16,38 @@ try {
 // Load apps.json config
 let appsConfig = { apps: [] };
 try {
-	const appsCfgPath = path.join(__dirname, 'apps.json');
-	appsConfig = JSON.parse(fs.readFileSync(appsCfgPath, 'utf8'));
+	const localAppsPath = path.join(__dirname, 'apps.json');
+	const rootAppsPath = path.join(__dirname, '..', 'apps.json');
+
+	const configs = [];
+	if (fs.existsSync(localAppsPath)) {
+		configs.push(JSON.parse(fs.readFileSync(localAppsPath, 'utf8')));
+	}
+	if (fs.existsSync(rootAppsPath)) {
+		configs.push(JSON.parse(fs.readFileSync(rootAppsPath, 'utf8')));
+	}
+
+	if (configs.length > 0) {
+		appsConfig = configs[0];
+		if (configs.length > 1) {
+			// Merge apps arrays from both configs
+			const mergedApps = [...(appsConfig.apps || [])];
+			const rootApps = configs[1].apps || [];
+			rootApps.forEach(app => {
+				if (!mergedApps.find(a => a.name === app.name)) {
+					mergedApps.push(app);
+				}
+			});
+			appsConfig.apps = mergedApps;
+			// If root config has a path, it takes precedence for root apps
+			if (configs[1].path) {
+				appsConfig.path = configs[1].path;
+			}
+		}
+	}
+	if (!appsConfig.path) appsConfig.path = '/apps';
 } catch (e) {
-	console.error('[drive_forms] Failed to read apps.json:', e.message);
+	console.error('[drive_forms] Failed to read or merge apps.json:', e.message);
 }
 
 const ALLOWED = new Set(appConfig.publicFiles || []);
@@ -46,7 +74,8 @@ function invokeAppMethod(appName, methodName, params, sessionID, callback, req, 
 	// Path to app server.js
 	const appEntry = appsConfig.apps.find(a => a.name === appName);
 	if (!appEntry) return callback(new Error('App not found'));
-	const appServerPath = path.join(__dirname, '..', 'apps', appName, 'server.js');
+	const appsBasePath = (appsConfig.path || '/apps').replace(/^[/\\]+/, '');
+	const appServerPath = path.join(__dirname, '..', appsBasePath, appName, 'server.js');
 	if (!fs.existsSync(appServerPath)) return callback(new Error('App server.js not found'));
 	let appModule;
 	try {
